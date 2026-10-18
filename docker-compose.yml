@@ -6,6 +6,8 @@
 services:
   falkordb:
     image: falkordb/falkordb:latest
+    environment:
+      REDIS_ARGS: "--bind 0.0.0.0 --protected-mode no"
     ports:
       - "6379:6379"
       - "3000:3000"
