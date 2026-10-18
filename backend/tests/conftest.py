@@ -18,8 +18,26 @@ from shadowgraph.runtime import Runtime, set_runtime  # noqa: E402
 
 
 @pytest.fixture(scope="session")
-async def rt():
-    runtime = Runtime()
+def ha_fixture(tmp_path_factory):
+    """A miniature Home Assistant (git repo + HACS folder) and the snapshot built from it."""
+    from shadowgraph.ha.importer import build, save
+    from tests.ha_fixture import build as build_fixture
+
+    tmp = tmp_path_factory.mktemp("ha")
+    fx = build_fixture(tmp)
+    snap = build(fx["core"], fx["hacs"], None, None, "origin/dev", ["2026.9.0", "2026.10.0"])
+    path = str(tmp / "ha_snapshot.json.gz")
+    save(snap, path)
+    return {**fx, "snapshot": path, "snap": snap}
+
+
+@pytest.fixture(scope="session")
+async def rt(ha_fixture):
+    from shadowgraph.config import Settings
+
+    cfg = Settings(tenants=("ha", "acme", "globex"), ha_snapshot=ha_fixture["snapshot"], ha_clone=ha_fixture["core"],
+                   ha_source="git", github_token="", gemini_api_key="")
+    runtime = Runtime(cfg)
     if not await runtime.db.ping():
         pytest.skip(f"FalkorDB not reachable at {runtime.settings.falkordb_url} (start it: docker compose up falkordb)")
     set_runtime(runtime)

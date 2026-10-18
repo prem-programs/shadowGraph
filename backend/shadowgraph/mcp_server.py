@@ -1,4 +1,5 @@
-"""ShadowGraph MCP server: 17 tools over the company graph, the shadow graphs and agent memory.
+"""ShadowGraph MCP server: tools over the company graph, the shadow graphs, agent memory and the
+Home Assistant workspace (ha_* tools, see shadowgraph/ha/mcp_tools.py).
 
 Used three ways: in-process by the agents, over streamable HTTP at /mcp (mounted by the API),
 and over stdio for Cursor / Claude Desktop:  python -m shadowgraph.mcp_server
@@ -28,7 +29,10 @@ server = MCPServer(
         "of services, endpoints, PRs, decision records, chat threads and engineers. Typical use: call "
         "simulate_change with a pr_number (or an endpoint_id like 'auth-service:/v1/token-verify') to get a "
         "BLOCK / WARN / PASS verdict with proof. brain_* tools read the company graph, sim_* tools work on "
-        "short-lived copies of it, memory_* tools read and write agent memory. tenant defaults to 'acme'."
+        "short-lived copies of it, memory_* tools read and write agent memory. tenant defaults to 'acme'. "
+        "For the real Home Assistant codebase (home-assistant/core and its HACS custom integrations) use the "
+        "ha_* tools: before deleting or renaming a core name call ha_can_remove; before committing a change call "
+        "ha_check_edits with the new file contents; ha_who_uses lists every user with file:line. All read-only."
     ),
 )
 
@@ -266,3 +270,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# Home Assistant workspace tools (registered on the same server)
+from .ha import mcp_tools as _ha_tools  # noqa: E402,F401

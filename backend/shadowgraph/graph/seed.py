@@ -189,6 +189,12 @@ async def ensure_seeded(rt: "Runtime", drop_shadows: bool = False) -> None:
     if drop_shadows:  # API server startup only, so no process can drop a shadow graph that is in use
         await drop_leftover_shadows(rt)
     for tenant in rt.settings.tenants:
+        if tenant == "ha":  # a real codebase, loaded from the snapshot file (see shadowgraph/ha)
+            from ..ha.service import ensure_loaded
+
+            if await ensure_loaded(rt):
+                await ensure_memory(rt, tenant)
+            continue
         if tenant not in TENANT_MODULES:
             log.warning("no seed data for tenant %r; skipping", tenant)
             continue
@@ -199,5 +205,11 @@ async def ensure_seeded(rt: "Runtime", drop_shadows: bool = False) -> None:
 
 async def reset_tenant(rt: "Runtime", tenant: str) -> None:
     """Demo retakes: rebuild the live graph and clear memory."""
+    if tenant == "ha":
+        from ..ha.service import ensure_loaded
+
+        await ensure_loaded(rt, force=True)
+        await ensure_memory(rt, tenant, wipe=True)
+        return
     await seed_live(rt, tenant)
     await ensure_memory(rt, tenant, wipe=True)

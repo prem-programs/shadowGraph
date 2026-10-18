@@ -44,7 +44,7 @@ function styles(): cytoscape.StylesheetJson {
         width: "mapData(size, 0, 1, 18, 46)", height: "mapData(size, 0, 1, 18, 46)",
         label: "data(id)", "font-size": 10, color: c.text, "text-valign": "bottom", "text-margin-y": 4,
         "text-background-color": c.bg, "text-background-opacity": 0.85, "text-background-padding": "1px",
-        "font-family": "Inter, system-ui, sans-serif",
+        "font-family": "IBM Plex Sans, system-ui, sans-serif",
       },
     },
     { selector: "node[tier = 0]", style: { "border-width": 3 } },

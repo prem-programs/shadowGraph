@@ -42,8 +42,16 @@ def _env_int(name: str, default: int) -> int:
 class Settings:
     falkordb_url: str = field(default_factory=lambda: _env("FALKORDB_URL", "redis://localhost:6379"))
     tenants: tuple[str, ...] = field(
-        default_factory=lambda: tuple(t.strip() for t in _env("TENANTS", "acme,globex").split(",") if t.strip())
+        default_factory=lambda: tuple(t.strip() for t in _env("TENANTS", "ha,acme,globex").split(",") if t.strip())
     )
+    # Home Assistant workspace (a real, public codebase). See docs/HOME_ASSISTANT.md.
+    ha_snapshot: str = field(default_factory=lambda: _env("HA_SNAPSHOT"))
+    ha_clone: str = field(default_factory=lambda: _env("HA_CLONE"))  # local clone of home-assistant/core (git source)
+    ha_source: str = field(default_factory=lambda: _env("HA_SOURCE", "auto"))  # auto | git | github
+    ha_repo: str = field(default_factory=lambda: _env("HA_REPO", "home-assistant/core"))
+    ha_feed: bool = field(default_factory=lambda: _env("HA_FEED", "0").lower() in ("1", "true", "yes", "on"))
+    ha_feed_interval: int = field(default_factory=lambda: max(60, _env_int("HA_FEED_INTERVAL", 180)))
+    ha_feed_batch: int = field(default_factory=lambda: max(1, _env_int("HA_FEED_BATCH", 12)))
     embed_backend: str = field(default_factory=lambda: _env("EMBED_BACKEND", "auto"))  # auto | fastembed | hash
     embed_model: str = field(default_factory=lambda: _env("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
     gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY"))

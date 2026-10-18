@@ -1,8 +1,110 @@
 # implemented.md: what was built, how, and how it was verified
 
-Build date: October 18, 2026. Built from the "ShadowGraph — Product Design Document" with Claude writing the code.
-This file is the honest record: what exists, how each part works, where the build departed from the design doc
-and why, what was tested, and what still needs a check on your own machine.
+Two build sessions on October 18, 2026, with Claude writing the code. **Part 2** (first below) turned ShadowGraph
+from a demo on invented data into a product checked against a real codebase. **Part 1** (further down) is the
+original build, kept as the record of the engine, the agents and the FalkorDB findings it rests on.
+
+# Part 2: the Home Assistant workspace and the redesign
+
+## 2.1 Why
+
+Two questions drove this session: does a real, busy repository produce the outcomes the product promises, and does
+the product solve a problem big companies pay for? Measured first, built second:
+
+- **The week of Oct 11-18 on home-assistant/core** (920 merged commits): 62% touch one integration nothing depends
+  on, about 17% touch core helpers or integrations others depend on, 8.6% are dependency bumps, about 11 add or
+  remove deprecations. So most PRs are quiet (the feed must say so fast) and the interesting ones are rare but
+  weekly.
+- **Who builds on core's API outside the repo:** every integration in the HACS default list (3,303 repositories,
+  3,304 integrations). A 150-repo sample first, then all of them.
+- **The outcome happened that week:** PR #186863 (a refactor, merged green) stopped re-exporting names that
+  custom integrations import from `homeassistant.components.sensor`. Verified by hand in both trees and in the
+  consumers' code before any product code relied on it.
+
+That is the platform-team problem in public: CI tests the repo you changed, not the repos that depend on it. The
+pitch became *"know who you'll break before you merge, whether a person or an AI agent wrote the change"*, with
+API retirement and an agent pre-flight check (MCP) as the two things a company would buy.
+
+## 2.2 What was built
+
+| Path | What it does |
+| --- | --- |
+| `backend/shadowgraph/ha/pyparse.py` | Parses Python newer than the interpreter: HA uses PEP 758 (`except A, B:`) from Python 3.14; rewritten and re-parsed, failures reported |
+| `ha/surface.py` | A module's importable surface (definitions, re-exports, aliases, PEP 695 type aliases, class members, private names), deprecations (`DeprecatedConstant`, `DeprecatedConstantEnum`, `DeprecatedAlias`, `@deprecated_class/function`) and a `Resolver` that follows re-exports, aliases, star imports, submodules and base classes, answering exists / missing / **unknown** |
+| `ha/usage.py` | Every use of a Home Assistant name in a file, with line and context (load, runtime, conditional, shimmed, type), aware of local variables that shadow an imported module |
+| `ha/importer.py` | Builds the snapshot: core at a ref plus 13 monthly release tags (history: when a name was deprecated or removed), all HACS integrations, manifests (dependencies, owners), CODEOWNERS, developer-blog posts, ADRs; follows each integration's own import graph to describe failures ("fails to set up", "its sensor platform fails to load") |
+| `ha/load.py` | Snapshot → FalkorDB graph `ha_live` (indexes, vector indexes on posts and ADRs); links blog posts to the names they mention; keeps past checks across snapshot refreshes |
+| `ha/sources.py` | Read-only change sources: `GitSource` (GitHub's `refs/pull/N/merge` test-merge refs, merged PRs from their squash commit) and `GitHubSource` (REST + raw.githubusercontent.com) |
+| `ha/impact.py` | The report for one change: API diff of base and head for every name someone imports from the changed modules, users from the graph, effect per use, cascade through manifest dependencies, reach, announcements, reviewers, verdict and headline |
+| `ha/migrate.py` | Draft patches (move an import, replace a deprecated constant, drop a dead one), parsed and re-scanned before they are shown |
+| `ha/agents.py`, `ha/mcp_tools.py` | The agent team for HA changes and 13 MCP tools (7 pre-flight tools for any coding agent, 6 used by the agents) |
+| `ha/feed.py`, `ha/ask.py`, `ha/service.py` | Live feed of open PRs (escalates non-clear ones to the agents), Ask with sources, shared operations |
+| `api.py` | `/api/ha/*`: overview, changes (list, check, report), preflight, symbols (search, detail), retirements, broken, drafts, feed |
+| `frontend/` | Rebuilt from scratch (see 2.5) |
+| `scripts/fetch_ha_sources.py` | Cross-platform: clones everything the snapshot needs and builds it |
+| `data/ha_snapshot.json.gz` | The snapshot used by the demo (5.5 MB; 76 MB of JSON uncompressed) |
+
+## 2.3 How it was built (in order)
+
+1. **Measured the question** (2.1) with git on a shallow clone and a HACS sample, before writing product code.
+2. **Static analysis** (`pyparse`, `surface`, `usage`). First runs exposed three traps, each fixed and kept as a
+   test: Python 3.13 cannot parse HA's 3.14 syntax (everything looked "removed"); PEP 695 `type X = ...` aliases
+   and `Platform = EntityPlatforms` aliases looked missing; local variables named like an imported module
+   (`for sensor in ...`) produced false uses.
+3. **Self-test as the correctness bar:** every import inside core's own 1,510 integrations must resolve in core
+   (core's CI guarantees they work). It went from 15 false "missing" to **0**; names that cannot be decided are
+   *unknown* and never reported as breaks.
+4. **Full snapshot:** 3,303 HACS repositories cloned sparse and blobless (Python files and manifests only,
+   2.3 GB, about 20 minutes with 24 parallel clones); import in 8.5 minutes; 562,444 import sites; 6,562 core names in use.
+5. **Graph load, impact engine, sources, agents, MCP tools, feed, API**, each tried on the real data as it landed.
+   #186863 replays in 0.3 s and reports 32 breaking integrations; the agent run (38 MCP calls, two `GRAPH.COPY`
+   shadows of about 1.4 s each on this graph) agrees with the engine (32 = 32).
+6. **Spot checks against source code** for every headline claim (the consumer files, the commit diffs, the
+   2026.10 tag versus dev): StateType, RestoreEntity and EntityCategory gone from `sensor/__init__.py` in commit
+   623fa9838; Aquatlantis Ori imports `StateType` from `homeassistant.components.sensor` at `sensor.py:9`;
+   `async_track_state_change` removed in a147e2198 and imported at module level by all 11 reported integrations.
+7. **Frontend redesign**, checked in Chromium at 1440 and 390 px, light and dark, with no console errors.
+8. **Tests:** a miniature Home Assistant (`tests/ha_fixture.py`, a real git repo with tags, a dev branch and a
+   squash-merged PR, plus four HACS-style integrations) exercises every layer. **46 tests pass** (33 from Part 1,
+   13 new).
+9. **Docs, Docker, packaging, push.**
+
+## 2.4 Decisions and fixes worth knowing
+
+- **Read-only toward everyone.** Home Assistant's AI policy treats automated comments as spam, so the HA workspace
+  never posts; drafts are copied by a person. (The Acme sample can still post to your own demo repo.)
+- **Fetching PR refs must not touch the clone's history.** `git fetch --depth=2` of a PR into a shallow clone
+  marked the PR's base as a new shallow boundary and hid the clone's dev history, breaking the replay of merged
+  PRs. Fix: PR refs go to a separate bare store next to the clone that borrows its objects (alternates) and copies
+  its shallow file. Found by a failing replay, reproduced, fixed, re-verified.
+- **Severity follows when code runs.** Removal only "breaks" a use at load or run time; a fallback or a type hint
+  is "unaffected". Conditional uses are "may break". This keeps the numbers honest: integrations that ship a
+  `try/except ImportError` shim are not counted as broken.
+- **Blog-post links are conservative:** a post links to a name when it writes it fully qualified, as a dotted
+  suffix, or as a distinctive bare name (CapWords, CONSTANT_CASE, `async_*`) that exactly one module defines.
+  An earlier, looser rule linked unrelated posts; it was tightened after reading the results.
+- **Families on the retirement board** are deprecations declared together (same module, release and mechanism,
+  adjacent lines), so the six `CONN_CLASS_*` constants are one retirement, not three.
+- **Portable code:** no `%-d` dates (Windows), no shell-only scripts for the snapshot (Python).
+
+## 2.5 The redesign
+
+The first dashboard looked generic: three equal panels, an indigo button, pills everywhere, a hairball graph, and
+an agent log as the main content. The new one is built around the answer a reviewer needs, in this order: what
+happens (one sentence), four numbers, who is affected with the exact line and effect, what changed in the API,
+when it ships, context, and only then how it was checked (agents, hypotheses, shadow copies, a focused graph of
+the blast radius). Visual rules: paper and ink, hairline rules instead of boxes, IBM Plex Sans and Mono (numbers
+and code in mono), one colour per outcome and always with a word and a shape (square = breaks, diamond = retires,
+ring = review, dot = clear), light and dark, and a phone layout that switches list and detail.
+
+## 2.6 Not done here (see AGENT_HANDOFF.md)
+
+Real PR titles for open PRs and the GitHub API source need a token (the build machine could reach git, not the
+API); install counts from Home Assistant analytics; the Docker build; deployment; a recorded demo.
+
+---
+
+# Part 1: the original build
 
 ## 1. Status in one paragraph
 
@@ -192,6 +294,8 @@ saved sessions. A run can be opened by URL (`/?tenant=acme&run=<id>`), which is 
 Measured here: a full check takes 0.2–0.5 s; a copy of the 25-service graph 25–100 ms; exact betweenness about 8 ms.
 
 ## 8. Not run here: check these on your machine
+
+The full step-by-step version, written so another agent can finish the job, is [AGENT_HANDOFF.md](AGENT_HANDOFF.md).
 
 | Item | Why not here | Check (minutes) |
 | --- | --- | --- |

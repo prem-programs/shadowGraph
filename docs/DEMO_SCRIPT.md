@@ -1,15 +1,19 @@
-# Demo video script (2:30)
+# Demo video script (2:45)
 
-Before recording: press **Reset demo** in the dashboard (or `POST /api/admin/reset/acme`), make sure the three PRs
-exist in the demo repo, and open the GitHub PR in a second tab. Numbers marked N come from your take: read them off
-the screen.
+Before recording: `docker compose up`, open <http://localhost:8000>, replay #186863, #184756 and #186267 once
+(Pull requests page, "Replay a real change") so they are in the list, and have Claude Code or Cursor connected to
+`http://localhost:8000/mcp`. Numbers below are from the snapshot in `data/` (Oct 18, 2026); if you rebuild it,
+read the new ones off the screen.
 
 | Time | Show | Say |
-| --- | --- | --- |
-| 0:00–0:15 | GitHub PR #1: the ShadowGraph check is red, the comment is there | "This PR would have cut off our partner API. ShadowGraph caught it by running it on a copy of the company first." |
-| 0:15–0:50 | Dashboard, PR #1, press Run. Point at the Decision card: ADR-08 struck through → ADR-19; the expert card | "The author cites ADR-08. The graph knows ADR-08 was replaced by ADR-19, and PageRank says Priya is who auth engineers defer to." |
-| 0:50–1:35 | Timeline: the two amber lock conflicts, three "Copied acme_live" rows; graph switches to Shadow: red islands, dashed cut calls; verdict BLOCK; tick "Queries" and click the measurement row to show `algo.WCC` | "Three simulator agents race for hypotheses. The locks live in FalkorDB, so no two do the same work. Each forks the live graph in N ms, removes the endpoint and measures: one connected company becomes three. Blocked, with proof." |
-| 1:35–2:10 | Memory tab: the fact overridden; the playbook. Pick PR #2, Run: "Playbook reused … N steps instead of M" | "It remembers. The old belief is overridden by evidence, and the investigation becomes a playbook. The next similar PR takes N steps instead of M, and still re-runs the simulation." |
-| 2:10–2:30 | Chat: "Did we see a token-verify removal before?" → answer with PR #1 and ADR-19 chips. Switch tenant to Globex: memory empty. 5 s of Cursor calling `simulate_change` | "Same tools from Cursor over MCP, with separate memory per company. ShadowGraph: see the blast radius before you merge." |
+|---|---|---|
+| 0:00–0:20 | GitHub: PR #186863 in home-assistant/core, all checks green, merged | "This is Home Assistant, one of the busiest open-source projects: 130 merged PRs a day. This refactor passed every check and merged on Thursday." |
+| 0:20–0:55 | ShadowGraph, Pull requests → #186863. The verdict line, the 4 numbers, then the first rows of *Who is affected* | "It breaks 32 custom integrations when 2026.11 ships on November 4. Core's CI can't see them: they live in 3,303 other repositories. ShadowGraph can, down to the file and line: Aquatlantis Ori imports `StateType` from the sensor module, so its sensor platform will fail to load." |
+| 0:55–1:20 | Expand a row, press **Draft a fix**: the two-line diff | "And here is the fix for that maintainer: import it from where it actually lives. A draft. ShadowGraph never posts to anyone's repository; Home Assistant's policy treats bot comments as spam, so we respect that." |
+| 1:20–1:45 | Open *How this was checked*: hypotheses H1–H5, the agents, "Engine and shadow simulation agree: 32 vs 32", the small graph | "Under the hood, agents check every change. Three simulators copy the FalkorDB graph, apply the change in their own shadow, and measure. The judge compares their count with the engine's before filing the report." |
+| 1:45–2:05 | Retirements → 2027.5 → CONN_CLASS_* (343 still use it) | "It also runs retirements. Core just deprecated six constants; 343 integrations still use them. The condition for removal is executable: remove when nobody imports them. Today: 343 to go." |
+| 2:05–2:30 | Claude Code: "Can I delete `homeassistant.components.sensor.EntityCategory`?" → it calls `ha_can_remove` → "No: 7 integrations would break…" | "And it's a pre-flight for AI agents. Before Claude deletes a name, it asks ShadowGraph who would break. Agents refactor fast; now they refactor with the blast radius in view." |
+| 2:30–2:45 | Broken by core: 59 / 95 | "59 integrations stop loading next month, 95 are broken today. Every platform team has this problem with their internal consumers. ShadowGraph: know who you'll break before you merge." |
 
-Recording tips: OBS at 1080p, browser zoom 90%, dark or light theme consistently, close other tabs.
+Recording tips: 1080p, browser zoom 90%, one theme throughout, close other tabs. The Ask page ("Who still uses
+async_track_state_change?") is a good 10-second extra if you have time.

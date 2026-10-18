@@ -1,4 +1,4 @@
-"""Command line:  python -m shadowgraph [serve|seed|reset|run|mcp]"""
+"""Command line:  python -m shadowgraph [serve|seed|reset|run|mcp|ha-import]"""
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,12 @@ import sys
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="shadowgraph")
+    if len(sys.argv) > 1 and sys.argv[1] == "ha-import":  # its own argument parser
+        from .ha.importer import main as ha_import
+
+        ha_import(sys.argv[2:])
+        return
+    parser = argparse.ArgumentParser(prog="shadowgraph", epilog="also: ha-import (build the Home Assistant snapshot)")
     sub = parser.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("serve", help="run the API, MCP over HTTP and the dashboard")
     p.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))

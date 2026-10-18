@@ -20,8 +20,15 @@ CHECKS = {
     "entry_path": ("sim", "H3", "Tier 0 entry points lose their path to {provider}", 2),
     "decision": ("brain", "H4", "A decision in force forbids removing {route}", 3),
     "expert": ("brain", "H5", "Who must review changes to {provider}", 1),
+    # Home Assistant workspace (code APIs instead of service endpoints)
+    "consumers": ("sim", "H1", "Removed names break integrations outside core ({route})", 3),
+    "cascade": ("sim", "H2", "Integrations that fail to set up take their dependents down", 2),
+    "deadline": ("sim", "H3", "Deprecated names still have users before their removal release", 2),
+    "announced": ("brain", "H4", "The change was announced (developer blog or architecture decision)", 2),
+    "reviewers": ("brain", "H5", "Who must review changes to {provider}", 1),
 }
 DEFAULT_CHECKS = ["partition", "chokepoint", "entry_path", "decision", "expert"]
+HA_CHECKS = ["consumers", "cascade", "deadline", "announced", "reviewers"]
 
 
 def new_id(prefix: str) -> str:

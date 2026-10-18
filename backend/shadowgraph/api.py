@@ -19,6 +19,9 @@ from sse_starlette.sse import EventSourceResponse
 
 from .agents.orchestrator import start_run
 from .core import brain, chat, github, ingest, memory
+from .ha import ask as ha_ask
+from .ha import feed as ha_feed
+from .ha import service as ha
 from .db import live_graph
 from .graph import queries as Q
 from .graph.seed import TENANT_MODULES, reset_tenant
@@ -57,8 +60,15 @@ async def lifespan(app: FastAPI):
                  ", ".join(rt.settings.tenants), rt.embedder.name)
     except Exception as exc:  # keep serving; /api/health reports it and requests retry
         log.error("FalkorDB not ready yet: %s", exc)
+    feed_task = None
+    if rt.settings.ha_feed and "ha" in rt.settings.tenants:
+        import asyncio
+
+        feed_task = asyncio.create_task(ha_feed.loop(rt))
     async with mcp_server.session_manager.run():
         yield
+    if feed_task:
+        feed_task.cancel()
     await rt.db.close()
 
 
@@ -79,6 +89,8 @@ async def _ready():
 
 
 def _tenant(rt, tenant: str) -> str:
+    if tenant == "ha" and "ha" in rt.settings.tenants:
+        return tenant
     if tenant not in rt.settings.tenants or tenant not in TENANT_MODULES:
         raise HTTPException(404, f"unknown tenant '{tenant}'")
     return tenant
@@ -114,10 +126,14 @@ async def tenants() -> list[dict[str, Any]]:
     rt = await _ready()
     out = []
     for t in rt.settings.tenants:
+        if t == "ha":
+            out.append({"id": "ha", "company": "Home Assistant", "kind": "codebase",
+                        "loaded": ha.state(rt).loaded, "prs": []})
+            continue
         if t not in TENANT_MODULES:
             continue
         prs = await rt.db.query(live_graph(t), Q.PR_LIST, emit=False, read_only=True)
-        out.append({"id": t, "company": TENANT_MODULES[t].COMPANY, "prs": prs})
+        out.append({"id": t, "company": TENANT_MODULES[t].COMPANY, "kind": "services", "prs": prs})
     return out
 
 
@@ -194,6 +210,8 @@ async def post_chat(req: ChatRequest) -> dict[str, Any]:
     rt = await _ready()
     tenant = _tenant(rt, req.tenant)
     try:
+        if tenant == "ha":
+            return await ha_ask.answer(rt, req.session_id, req.message, req.mode or rt.settings.default_mode)
         return await chat.answer(rt, tenant, req.session_id, req.message, req.mode or rt.settings.default_mode)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -253,6 +271,172 @@ async def admin_reset(tenant: str, x_admin_token: str | None = Header(default=No
         raise HTTPException(401, "X-Admin-Token required")
     await reset_tenant(rt, _tenant(rt, tenant))
     return {"ok": True, "tenant": tenant}
+
+
+# ---------------------------------------------------------------- Home Assistant workspace (read-only)
+
+def _ha_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, ha.NotAvailable):
+        return HTTPException(409, str(exc))
+    if isinstance(exc, LookupError):
+        return HTTPException(404, str(exc))
+    return HTTPException(502, f"{type(exc).__name__}: {exc}")
+
+
+class HAChangeRequest(BaseModel):
+    number: int | None = None
+    url: str | None = None
+    sha: str | None = None
+    agents: bool = True
+
+
+class HAPreflightFile(BaseModel):
+    path: str = Field(min_length=1, max_length=300)
+    content: str | None = None
+
+
+class HAPreflight(BaseModel):
+    title: str = "Planned change"
+    files: list[HAPreflightFile] = Field(min_length=1, max_length=40)
+
+
+class HADraftRequest(BaseModel):
+    symbol: str
+    integration: str
+
+
+class HASymbols(BaseModel):
+    symbols: list[str] = Field(min_length=1, max_length=60)
+
+
+@app.get("/api/ha/overview")
+async def ha_overview() -> dict[str, Any]:
+    rt = await _ready()
+    return await ha.overview(rt)
+
+
+@app.get("/api/ha/changes")
+async def ha_changes(limit: int = 100) -> list[dict[str, Any]]:
+    rt = await _ready()
+    try:
+        return await ha.list_changes(rt, min(max(limit, 1), 300))
+    except Exception as exc:
+        raise _ha_error(exc) from exc
+
+
+@app.post("/api/ha/changes")
+async def ha_check_change(req: HAChangeRequest) -> dict[str, Any]:
+    rt = await _ready()
+    number = req.number
+    if number is None and req.url:
+        m = __import__("re").search(r"/pull/(\d+)", req.url)
+        number = int(m.group(1)) if m else None
+    if number is None and not req.sha:
+        raise HTTPException(422, "give a PR number, a PR url or a commit sha")
+    if not ha.state(rt).loaded:
+        raise HTTPException(409, "the Home Assistant snapshot is not loaded")
+    from .ha.agents import start_change_run
+
+    record = start_change_run(rt, number or 0, req.sha or "")
+    return {"run_id": record.run_id, "number": number, "sha": req.sha}
+
+
+@app.get("/api/ha/changes/{change_id}")
+async def ha_change(change_id: str) -> dict[str, Any]:
+    rt = await _ready()
+    try:
+        r = await ha.get_change(rt, change_id)
+    except Exception as exc:
+        raise _ha_error(exc) from exc
+    if r is None:
+        raise HTTPException(404, f"no check stored for {change_id}")
+    return r
+
+
+@app.post("/api/ha/preflight")
+async def ha_preflight(req: HAPreflight) -> dict[str, Any]:
+    rt = await _ready()
+    try:
+        return await ha.analyze_edits(rt, {f.path.lstrip("/"): f.content for f in req.files}, req.title)
+    except Exception as exc:
+        raise _ha_error(exc) from exc
+
+
+@app.get("/api/ha/symbols")
+async def ha_symbols(q: str = "", limit: int = 20) -> list[dict[str, Any]]:
+    rt = await _ready()
+    try:
+        return await ha.search_symbols(rt, q, min(max(limit, 1), 50))
+    except Exception as exc:
+        raise _ha_error(exc) from exc
+
+
+@app.get("/api/ha/symbols/{symbol_id:path}")
+async def ha_symbol(symbol_id: str) -> dict[str, Any]:
+    rt = await _ready()
+    try:
+        d = await ha.symbol_detail(rt, symbol_id)
+    except Exception as exc:
+        raise _ha_error(exc) from exc
+    if d is None:
+        raise HTTPException(404, f"nobody we scanned imports {symbol_id}")
+    return d
+
+
+@app.get("/api/ha/retirements")
+async def ha_retirements() -> dict[str, Any]:
+    rt = await _ready()
+    try:
+        return await ha.retirements(rt)
+    except Exception as exc:
+        raise _ha_error(exc) from exc
+
+
+@app.post("/api/ha/retirements/users")
+async def ha_retirement_users(req: HASymbols) -> list[dict[str, Any]]:
+    rt = await _ready()
+    try:
+        return await ha.retirement_users(rt, req.symbols)
+    except Exception as exc:
+        raise _ha_error(exc) from exc
+
+
+@app.get("/api/ha/broken")
+async def ha_broken() -> dict[str, Any]:
+    rt = await _ready()
+    try:
+        return await ha.already_broken(rt)
+    except Exception as exc:
+        raise _ha_error(exc) from exc
+
+
+@app.post("/api/ha/drafts")
+async def ha_draft(req: HADraftRequest) -> dict[str, Any]:
+    rt = await _ready()
+    try:
+        return await ha.draft_migration(rt, req.symbol, req.integration)
+    except Exception as exc:
+        raise _ha_error(exc) from exc
+
+
+@app.get("/api/ha/feed")
+async def ha_feed_status() -> dict[str, Any]:
+    rt = await _ready()
+    f = ha.state(rt).feed
+    return {k: f.get(k) for k in ("enabled", "last_poll", "last_error", "polls", "open_seen", "last_checked",
+                                  "running")} | {"queued": list(f["queue"]), "interval": rt.settings.ha_feed_interval}
+
+
+@app.post("/api/ha/feed/poll")
+async def ha_feed_poll(x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
+    rt = await _ready()
+    token = os.environ.get("ADMIN_TOKEN", "")
+    if token and x_admin_token != token:
+        raise HTTPException(401, "X-Admin-Token required")
+    try:
+        return await ha_feed.poll_once(rt)
+    except Exception as exc:
+        raise _ha_error(exc) from exc
 
 
 # ---------------------------------------------------------------- the built dashboard (single-container mode)

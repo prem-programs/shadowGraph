@@ -1,125 +1,140 @@
 # ShadowGraph
 
-**A pull-request merge gate that simulates the change on a copy of your company graph before it lands.**
-ShadowGraph clones the live FalkorDB graph with `GRAPH.COPY`, applies the PR to the copy, measures what breaks
-(partitions, chokepoints, cut-off entry points), finds the decision record in force and the right reviewer, then
-blocks or approves the PR on GitHub with the proof. Agents coordinate through locks in a memory graph and turn every
-investigation into a playbook, so the next similar PR takes fewer steps.
+**Know who you'll break before you merge, whether a person or an AI agent wrote the change.**
 
-Built for **Graph Hacks: Context for AI Agents** (WeMakeDevs × FalkorDB). Entered in **all three tracks**.
+Code that other teams build on (a platform SDK, an internal library, a public API) breaks people in repositories
+its CI never sees. ShadowGraph keeps a FalkorDB graph of who imports what, down to the file and line, and checks
+every change against it: which names disappear or get deprecated, who still uses them, what exactly fails (the
+whole integration, one platform, or nothing because there is a fallback), when that ships, and a draft fix for
+each user. Coding agents get the same check as MCP tools, so an agent asks *"can I remove this?"* before it does.
 
-![ShadowGraph blocking PR #1](docs/img/dashboard-block.png)
+It runs on a real codebase, not invented data: **Home Assistant core** (1,510 integrations, about 130 merged PRs a
+day) and **all 3,304 HACS custom integrations** that build on its API from 3,303 other repositories.
+Read-only: it never posts to their repositories.
 
-## The demo in one PR
+Built for **Graph Hacks: Context for AI Agents** (WeMakeDevs × FalkorDB), entered in all three tracks.
 
-PR #1 removes `/v1/token-verify` and cites decision ADR-08. ShadowGraph:
+![A real Home Assistant PR: breaks 32 custom integrations](docs/img/ha-report.png)
 
-1. **Company brain (Track 03):** follows `SUPERSEDED_BY` from ADR-08 to **ADR-19**, which is in force and forbids
-   the removal; links the Slack-style thread; ranks **@priya** first with PageRank.
-2. **Acts on connected data (Track 01):** Scout posts 5 hypotheses; 3 Simulator agents race for them (two lose the
-   lock and take the next one); each forks its own shadow graph, deletes the endpoint and its calls, and runs
-   `algo.WCC`, exact betweenness and `shortestPath`. The mesh goes from **1 connected group to 3**; the cut-off
-   group holds a tier 0 service. Verdict **BLOCK**, posted to the PR as a comment plus a failed commit status.
-3. **Memory and coordination (Track 02):** the fact "`/v1/token-verify` is safe to remove" (from ADR-08) is
-   overridden by "not safe" (from this run); the steps that decided the verdict become a playbook. PR #2
-   (`/v1/session-refresh`) recalls it by similarity and finishes in **23 agent steps instead of 35**, still
-   re-running the safety simulation. Chat answers "did we see this before?" from past episodes and sessions.
+## What it found in one real week
 
-Measured in development (25 services, laptop-class machine): one full run 0.2–0.5 s; `GRAPH.COPY` 25–100 ms.
+| Change (home-assistant/core, Oct 11-18, 2026) | ShadowGraph |
+|---|---|
+| [#186863](https://github.com/home-assistant/core/pull/186863) Move sensor entity classes to entity module | **Breaks 32 custom integrations on 2026.11** (Nov 4). A green refactor stopped re-exporting 10 names that custom integrations import from `homeassistant.components.sensor`: `StateType`, `RestoreEntity`, `EntityCategory`, even `datetime`. |
+| [#184756](https://github.com/home-assistant/core/pull/184756) Remove deprecated `async_track_state_change` | **Breaks 11 custom integrations on 2026.11**, all at import time, despite a developer-blog announcement in 2024. |
+| [#186267](https://github.com/home-assistant/core/pull/186267) Deprecate config flow connection class constants | **Starts retiring `CONN_CLASS_*`: 343 integrations still use them**, removal planned for 2027.5. |
+
+Across the snapshot: **59** custom integrations stop loading (fully or one platform) in 2026.11 unless fixed first,
+36 of them updated since July; **95** already fail on the current release; **17** retirements in progress, 10 ready
+to remove today, 1 past its planned release. Details and method: [docs/HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md).
+
+## The product
+
+| Page | What you get |
+|---|---|
+| **Pull requests** | Every checked PR with a verdict (Breaks / Retires / Review / Clear). The live feed checks new open PRs; most say "no public API change" in a second. Each report: who is affected, with `file:line` and what fails; what changes in the API; when it ships; announcements and reviewers; how it was checked. |
+| **Retirements** | Every deprecated name, the release it stops working in, days left, who still uses it, and an executable condition: *remove when no integration imports it at load or run time*. |
+| **Broken by core** | Custom integrations that import names core no longer has: breaking in the next release, or already broken. |
+| **Who uses…** | Any core name: every user, how it uses it, what removal would do, where else the name lives. |
+| **Draft a fix** | A unified diff for one user (move an import, swap a deprecated constant, drop a dead one), parsed and re-checked before it is shown. A draft: nothing is posted. |
+| **Ask** | Questions answered from the graph, the developer blog, ADRs and past checks, with sources and saved sessions. |
+| **Connect an agent** | MCP setup for Claude Code and Cursor, plus the rule to paste into `CLAUDE.md`. |
+
+<p>
+<img src="docs/img/ha-retirements.png" width="49%" alt="Retirement board">
+<img src="docs/img/ha-broken.png" width="49%" alt="Broken by core">
+</p>
+
+## How the three tracks fit
+
+1. **Agents that act on connected data.** A team of agents checks each change: Scout opens it and plans, three
+   Simulators race for hypotheses, each copies the live graph with `GRAPH.COPY`, applies the change in its
+   shadow, measures who loses an import and how failures spread through manifest dependencies, and drops the
+   copy. Scribe finds announcements and reviewers; Judge cross-checks the shadow count against the engine (they
+   agree: 32 = 32 for #186863) and files the report. Every step is an MCP tool call.
+2. **Agent memory and coordination.** Hypotheses are locks in a memory graph (atomic claims, no double work).
+   Each check is an episode; facts like "`homeassistant.components.sensor.EntityCategory` is safe to remove = false"
+   are versioned; the checks that decided a verdict become a playbook that the next similar change reuses.
+3. **Company brain.** One graph joins code (modules, names, imports), people (CODEOWNERS), decisions (ADRs with
+   `SUPERSEDED_BY`), announcements (developer-blog posts linked to the names they mention), releases and past
+   checks. Ask answers "who still uses `async_track_state_change`?" with sources.
 
 ## Quick start
 
-**Docker (recommended).** Needs Docker Desktop.
+**Docker.** Needs Docker Desktop.
 
 ```bash
-cp .env.example .env        # optional: every value in it is optional
+cp .env.example .env        # optional; set GITHUB_TOKEN for real PR titles and a higher API limit
 docker compose up --build
 ```
 
-Open <http://localhost:8000>, pick **PR #1** and press **Run check**. FalkorDB's own browser is at
-<http://localhost:3000>. Windows: `powershell -ExecutionPolicy Bypass -File scripts\start.ps1`.
+Open <http://localhost:8000>. The Home Assistant snapshot (`data/ha_snapshot.json.gz`) loads on first start
+(about 20 s). Replay the three changes above from the Pull requests page, or press **Poll now** to check the
+newest open PRs. Windows: `powershell -ExecutionPolicy Bypass -File scripts\start.ps1`.
 
-**Without Docker.** Python 3.12/3.13 and Node 20.19+; FalkorDB from FalkorDB Cloud (free) or any FalkorDB server.
+**Without Docker.** Python 3.12+ and Node 20.19+; a FalkorDB server (or FalkorDB Cloud).
 
 ```bash
 cd backend && python -m venv .venv && . .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
-export FALKORDB_URL=redis://default:PASSWORD@HOST:PORT          # or put it in ../.env
-python -m shadowgraph serve                                    # API + /mcp on :8000
-cd ../frontend && npm ci && npm run dev                        # dashboard on :5173
+python -m shadowgraph serve                                    # API + /mcp + dashboard on :8000
+cd ../frontend && npm ci && npm run build                      # or npm run dev for :5173
 ```
 
-Terminal only: `python -m shadowgraph run acme 1` prints the PR comment and the verdict.
+Optional: `HA_CLONE=/path/to/ha-core` (a shallow clone of home-assistant/core) to read PRs with git instead of
+the GitHub API; `HA_FEED=1` to watch open PRs continuously. Refresh the snapshot with
+`python scripts/fetch_ha_sources.py --dir ../ha-sources --build`.
 
-**Tests** (need a FalkorDB at `FALKORDB_URL`; they use `test_`-prefixed graphs only):
+**Tests** (a FalkorDB at `FALKORDB_URL`; they only touch `test_`-prefixed graphs):
 
 ```bash
-cd backend && python -m pytest -q        # 33 tests: FalkorDB behaviour, queries, simulation, lock race, agents, API
+cd backend && python -m pytest -q        # 46 tests, including a miniature Home Assistant built as a real git repo
 ```
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  GH[GitHub PR] -- webhook --> API
+  GH[GitHub: home-assistant/core<br/>open PRs, read-only] -- git refs/pull/N/merge or REST --> SRC[Change source]
   UI[Dashboard] -- REST + SSE --> API
-  CUR[Cursor / Claude Desktop] -- MCP --> MCP
+  AG[Claude Code / Cursor] -- MCP --> MCP
   subgraph Backend [FastAPI backend]
-    API --> ORCH[Orchestrator]
+    SRC --> ENG[Impact engine: API diff of both trees,<br/>users from the graph, effects, cascade]
+    API --> ORCH[Agent team]
     ORCH --> SC[Scout] & SB[Scribe] & S1[Simulator x3] & JG[Judge]
-    SC & SB & S1 & JG -- MCP tool calls --> MCP[MCP server: 17 tools]
+    SC & SB & S1 & JG -- MCP tool calls --> MCP[MCP server: 30 tools]
+    MCP --> ENG
   end
-  MCP -- Cypher, GRAPH.COPY --> FDB[(FalkorDB)]
-  FDB --- LIVE[acme_live] & SIM[acme_sim_run_hyp] & MEM[acme_memory]
-  JG -- comment + commit status --> GH
+  ENG -- Cypher --> FDB[(FalkorDB)]
+  S1 -- GRAPH.COPY --> FDB
+  FDB --- LIVE[ha_live] & SIM[ha_sim_run_hyp] & MEM[ha_memory]
+  SNAP[Snapshot builder:<br/>core + 3,303 HACS repos<br/>+ blog + ADRs] --> LIVE
 ```
 
-Every agent action is an MCP tool call, so the agents, Cursor and the tests exercise the same 17 tools. The verdict
-comes from rules over graph results; Gemini (optional) only plans which checks to run and writes the opening
-sentences of the comment. Without a key everything runs in rules mode.
+- **Snapshot** (`backend/shadowgraph/ha/importer.py`): static analysis of every Python file in core and in each
+  HACS integration. Each import of a Home Assistant name is stored with file, line and context: *load* (module
+  level or class body), *runtime* (inside a function), *conditional*, *shimmed* (try/except fallback) or *type*
+  (annotations only). Each integration's own imports are followed from `__init__.py` and every platform file, so
+  a failure is described exactly. Names resolve through re-exports, aliases, star imports and base classes;
+  anything undecidable is *unknown*, never guessed. Self-test: all of core's own imports resolve.
+- **Graph**: `(Integration)-[:USES {sites, context}]->(Symbol)<-[:EXPORTS]-(Module)`, `DEPENDS_ON` from
+  manifests, `CODEOWNER`, `(Symbol)-[:REMOVED_IN|DEPRECATED_IN|BREAKS_IN]->(Release)`,
+  `(Post)-[:MENTIONS]->(Symbol)`, `(Decision)-[:SUPERSEDED_BY]->(Decision)`, `(Change)-[:CHANGES]->(Symbol)`.
+- **A change**: the base and result trees (GitHub's test-merge ref for open PRs, the squash commit for merged
+  ones, or an agent's planned edits), the API of every changed module diffed name by name, then one graph query
+  for who uses what changed. 0.2 to 1 s per PR on the full graph.
 
-| Agent | Does |
-| --- | --- |
-| Scout | Opens an episode, recalls a playbook by vector similarity, posts hypotheses (Gemini can choose them in LLM mode) |
-| Simulator ×3 | Race for `sim` hypotheses; each forks its own shadow graph, applies the change, measures, drops it |
-| Scribe | Claims `brain` hypotheses: decision in force (follows `SUPERSEDED_BY`), expert (PageRank) |
-| Judge | Applies the verdict rules, posts to GitHub, records facts, saves or reuses the playbook |
+Effects, in words a maintainer understands:
 
-Verdict rules: **BLOCK** if a new island holds a tier 0/1 service or a decision in force forbids the removal;
-**WARN** for low-tier islands or a chokepoint whose betweenness rises 50%+ into the top 3; otherwise **PASS**.
+| use of a removed name | result |
+|---|---|
+| module level in `__init__.py` or anything it imports | the integration fails to set up |
+| module level in a platform file (`sensor.py`) | its sensor platform fails to load |
+| inside a function | raises when that code runs |
+| inside `try/except ImportError` | has a fallback, keeps working |
+| annotation only | no runtime effect (lazy annotations, Python 3.14) |
 
-## Graph data model
-
-Per tenant: `{tenant}_live` (the company), `{tenant}_sim_{run}_{hyp}` (short-lived `GRAPH.COPY` of live, one per
-simulation hypothesis), `{tenant}_memory` (agent memory). Two tenants are seeded: **Acme Payments** (25 services, the
-demo) and **Globex** (8 services, shows that memory is separate per tenant).
-
-```mermaid
-erDiagram
-  Team ||--o{ Service : OWNS
-  Service ||--o{ Endpoint : EXPOSES
-  Service }o--o{ Endpoint : DEPENDS_ON
-  Service }o--o{ Service : "CALLS {via endpoint}"
-  PullRequest }o--o{ Endpoint : "MODIFIES {change}"
-  PullRequest }o--o{ DecisionRecord : CITES
-  DecisionRecord }o--o{ Endpoint : GOVERNS
-  DecisionRecord ||--o| DecisionRecord : "SUPERSEDED_BY {reason}"
-  DecisionRecord }o--|| ChatThread : DISCUSSED_IN
-  Engineer }o--o{ Engineer : "DEFERRED_TO {count}"
-  Engineer }o--o{ Service : "CONTRIBUTED_TO {commits}"
-  Engineer }o--|| Team : MEMBER_OF
-  Engineer ||--o{ PullRequest : AUTHORED
-```
-
-Memory graph: `(Session)-[:HAS_TURN]->(Message)-[:NEXT]->(Message)`, `(Session)-[:ABOUT]->(Episode)`,
-`(Episode)-[:INVESTIGATING]->(Hypothesis)`, `(Episode)-[:PRODUCED]->(Fact)-[:OVERRIDES]->(Fact)`,
-`(Episode)-[:CRYSTALLIZED_INTO|REUSED]->(Playbook)-[:HAS_STEP]->(ToolStep)`. Vector indexes (384 dims, cosine) on
-`DecisionRecord.embedding`, `Episode.symptom_embedding` and `Message.embedding`.
-
-Decisions carry two time axes: `valid_from`/`valid_until` (when they apply) and `recorded_at` (when the graph
-learned them). Facts in memory are versioned the same way: a new fact closes the old one and links to it.
-
-## The queries the product depends on
+## Queries (services sample)
 
 All of them live in [`backend/shadowgraph/graph/queries.py`](backend/shadowgraph/graph/queries.py); the full list
 is in [docs/QUERIES.md](docs/QUERIES.md) (generated from the code).
@@ -181,23 +196,29 @@ RETURN h.id AS claimed
 - Vector query `score` is a **distance** (0 = identical); `shortestPath` needs both ends bound first and works
   inside `WITH`; after an aggregation, `ORDER BY` must use a returned column.
 
-## MCP: use the same tools from Cursor or Claude Desktop
+## MCP: the pre-flight check for coding agents
 
-The server is at `http://localhost:8000/mcp` (streamable HTTP) or over stdio with `python -m shadowgraph mcp`.
-Setup for each client: [docs/MCP_CLIENTS.md](docs/MCP_CLIENTS.md). Try: *"Use shadowgraph to check PR 1 in tenant
-acme."* The one-call tool is `simulate_change`.
+`http://localhost:8000/mcp` (streamable HTTP) or stdio with `python -m shadowgraph mcp`. Setup per client:
+[docs/MCP_CLIENTS.md](docs/MCP_CLIENTS.md).
 
-## GitHub
+| Tool | Use it |
+|---|---|
+| `ha_can_remove(symbol)` | before deleting or renaming a core name |
+| `ha_check_edits(files)` | before committing: the new content of the files you changed |
+| `ha_who_uses(symbol)`, `ha_search(query)` | every user, with `file:line` |
+| `ha_check_pr(pr_number)`, `ha_retirements()`, `ha_draft_migration(symbol, integration)` | reports, the board, drafts |
 
-1. Push [`demo-repo/acme-payments-demo`](demo-repo/acme-payments-demo) to a new public repo and open its three PRs
-   (script and steps in its README).
-2. In `.env`: `GITHUB_TOKEN` (fine-grained, that repo only, *Pull requests* and *Commit statuses* read and write)
-   and `GITHUB_REPO=you/acme-payments-demo`.
-3. Optional webhook (needs a public URL): payload URL `https://<host>/api/webhooks/github`, content type JSON,
-   secret = `GITHUB_WEBHOOK_SECRET`, events: *Pull requests*. A new PR whose description says
-   `Removes: /v1/route` and `Cites: ADR-xx` is added to the company graph and checked automatically.
+Paste into `CLAUDE.md` / `AGENTS.md`: *"Before you remove, rename or change the signature of anything under
+`homeassistant/`, call `ha_can_remove` (or `ha_check_edits`). If integrations would break, deprecate instead."*
 
-ShadowGraph updates its own comment on re-runs instead of posting a new one.
+## The services sample (Acme Payments)
+
+The same engine on a different kind of API: microservices calling each other's HTTP endpoints. Pick **Acme
+Payments (sample)** in the workspace menu. PR #1 removes `/v1/token-verify`: simulators fork the service graph,
+`algo.WCC` shows the mesh splitting into three groups (one holds a tier 0 service), the decision cited by the PR
+(ADR-08) was superseded by ADR-19 which forbids the removal, and PageRank ranks the reviewer. PR #2 reuses the
+playbook and finishes in fewer steps. With a demo repo and token it posts the verdict as a PR comment and status
+([demo-repo/](demo-repo/acme-payments-demo)); Home Assistant is never posted to.
 
 ## Configuration
 
@@ -206,44 +227,50 @@ Everything is optional; see [.env.example](.env.example).
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `FALKORDB_URL` | `redis://localhost:6379` | FalkorDB server (Cloud: `redis://default:PASS@HOST:PORT`) |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | empty, `gemini-2.5-flash` | Enables LLM mode |
-| `GITHUB_TOKEN`, `GITHUB_REPO`, `GITHUB_WEBHOOK_SECRET` | empty | Posting verdicts, webhook |
-| `PR_TOKEN_VERIFY`, `PR_SESSION_REFRESH`, `PR_JWKS` | 1, 2, 3 | Numbers of the demo PRs in your repo |
+| `TENANTS` | `ha,acme,globex` | Workspaces to load |
+| `HA_SOURCE`, `HA_CLONE` | `auto`, empty | Read PRs from the GitHub API or from a local clone with git |
+| `HA_FEED`, `HA_FEED_INTERVAL`, `HA_FEED_BATCH` | `0`, `180`, `12` | Live feed of open PRs |
+| `HA_SNAPSHOT` | `data/ha_snapshot.json.gz` | Snapshot file |
+| `GITHUB_TOKEN` | empty | HA: read-only API use (titles, rate limit). Sample: PR comments with `GITHUB_REPO` |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | empty, `gemini-2.5-flash` | Optional LLM wording (answers, summaries) |
 | `EMBED_BACKEND` | `auto` | `fastembed` (all-MiniLM-L6-v2) when available, else a built-in hashing embedder |
-| `PUBLIC_URL` | `http://localhost:8000` | Links in GitHub statuses; allowed host for `/mcp` |
-| `ADMIN_TOKEN` | empty | Protects the Reset endpoint on public deployments |
+| `PUBLIC_URL`, `ADMIN_TOKEN` | `http://localhost:8000`, empty | Links and allowed MCP host; protects reset and poll |
 
 ## Deploy
 
-One Docker image serves the API, `/mcp` and the dashboard. FalkorDB Cloud (free tier) + Render (blueprint in
-[render.yaml](render.yaml)): steps in [docs/DEPLOY.md](docs/DEPLOY.md).
+One Docker image serves the API, `/mcp` and the dashboard, with the snapshot baked in. FalkorDB Cloud (free tier)
+plus Render: [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Repository layout
 
 ```text
-backend/shadowgraph/   api.py, mcp_server.py, agents/, core/ (sim, brain, memory, verdict, github, chat, ingest),
-                       graph/ (queries.py, schema.py, seed*.py), db.py, embed.py, events.py, runtime.py
-backend/tests/         33 tests against a real FalkorDB
-frontend/src/          React dashboard: timeline, Cytoscape graph, proof, memory, chat
-demo-repo/             the public demo repo with the three PRs
-docs/                  QUERIES.md, MCP_CLIENTS.md, DEPLOY.md, DEMO_SCRIPT.md, BLOG_DRAFT.md, TRANSFER.md
-implemented.md         what was built, how, and how it was verified
+backend/shadowgraph/ha/   importer (snapshot), surface + usage (static analysis), load (graph), impact (reports),
+                          sources (git / GitHub, read-only), agents, mcp_tools, migrate (drafts), feed, ask, service
+backend/shadowgraph/      api.py, mcp_server.py, agents/, core/, graph/ (the services sample), db.py, runtime.py
+backend/tests/            46 tests against a real FalkorDB (tests/ha_fixture.py builds a miniature Home Assistant)
+frontend/src/             React dashboard (ha/ pages, acme/ sample, components/ui.tsx, styles/)
+data/ha_snapshot.json.gz  the Home Assistant snapshot (about 6 MB)
+scripts/                  fetch_ha_sources.py (rebuild the snapshot), start/package scripts
+docs/                     HOME_ASSISTANT.md, MCP_CLIENTS.md, DEPLOY.md, DEMO_SCRIPT.md, QUERIES.md, TRANSFER.md
+implemented.md            what was built, how, and how it was verified
+AGENT_HANDOFF.md          what to finish on another machine
 ```
 
 ## AI assistance (disclosure)
 
-Built with Claude (Anthropic) as a coding assistant. The project owner set the product direction, chose the scope
-and stack through a design questionnaire, and reviews, runs and explains the code; Claude wrote most of the code
-and tests under that direction. Every FalkorDB behaviour the design relies on was verified against a real FalkorDB
-4.18 server, and three wrong assumptions in the original plan were found and fixed that way (see "What we learned").
-Details in [implemented.md](implemented.md).
+Built with Claude (Anthropic) as a coding assistant. The project owner set the product direction (a startup
+aimed at platform teams, Home Assistant as the real-data proof, read-only by design), chose scope and stack, and
+reviews, runs and explains the code; Claude wrote most of the code and tests under that direction. Claims in this
+README were measured on the data in `data/` and can be reproduced from the dashboard.
 
 ## Limitations
 
-- The company graph is seeded, not built from real code and traces (a natural next step: parse imports and OpenAPI
-  specs, ingest traces).
-- Chat and Slack-style threads are synthetic; the `.example` links are deliberately not real.
-- Exact betweenness over all pairs suits hundreds of services, not tens of thousands.
+- Coverage is the HACS default list; private and unlisted integrations are invisible. Dead code still counts.
+- Attribute access on instances is not tracked; only names reached through imports (and `Class.member`).
+- No install counts yet (Home Assistant publishes analytics per custom integration; adding them is small).
+- Future release dates follow the monthly schedule and are expectations; "breaks in 2026.11" assumes nothing
+  changes before the release.
+- Python only. The model (modules, names, users, contexts) carries to TypeScript or Java with a different parser.
 
 ## License
 

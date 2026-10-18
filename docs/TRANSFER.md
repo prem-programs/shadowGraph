@@ -5,25 +5,17 @@ laptop from `.env.example`.
 
 ## Option 1. Through GitHub (recommended)
 
-On this laptop, in the project folder:
+The project lives at <https://github.com/prem-programs/shadowGraph>. On the new laptop:
 
 ```bash
-git init -b main            # skip if it is already a git repo
-git add .
-git commit -m "ShadowGraph"
-git remote add origin https://github.com/<you>/shadowgraph.git
-git push -u origin main
-```
-
-`.gitignore` already keeps out `.env`, `node_modules`, builds and virtualenvs. On the new laptop:
-
-```bash
-git clone https://github.com/<you>/shadowgraph.git
+git clone https://github.com/prem-programs/shadowGraph.git shadowgraph
 cd shadowgraph
 copy .env.example .env      # Windows (macOS/Linux: cp .env.example .env), then fill in values
 docker compose up --build
 ```
 
+`.gitignore` keeps out `.env`, `node_modules`, builds and virtualenvs; the Home Assistant snapshot
+(`data/ha_snapshot.json.gz`, about 6 MB) is in the repository, so nothing else needs downloading.
 This is also what the hackathon needs: a public repository.
 
 ## Option 2. Zip file (USB drive, Google Drive, WeTransfer)

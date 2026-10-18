@@ -1,42 +1,58 @@
-import type { RunEvent } from "./types";
-
-const AGENT_COLORS: Record<string, string> = {
-  scout: "var(--agent-scout)",
-  scribe: "var(--agent-scribe)",
-  judge: "var(--agent-judge)",
-  orchestrator: "var(--muted)",
-  chat: "var(--agent-chat)",
-  external: "var(--agent-external)",
-};
-
-export function agentColor(agent?: string): string {
-  if (!agent) return "var(--muted)";
-  if (agent.startsWith("sim")) return "var(--agent-sim)";
-  return AGENT_COLORS[agent] ?? "var(--muted)";
-}
-
-/** Events shown as timeline rows by default; query-level events are shown when "Queries" is on. */
-export const STEP_TYPES = new Set([
-  "run_started", "episode_opened", "playbook_miss", "playbook_reused", "plan", "hypotheses_posted",
-  "lock_claimed", "lock_conflict", "fork_created", "change_applied", "measurement", "decision_traced",
-  "expert_found", "hypothesis_resolved", "fact_recorded", "verdict", "github_posted", "github_skipped",
-  "playbook_saved", "playbook_updated", "llm_fallback", "llm_text", "error", "run_finished",
-]);
-
-export function tone(e: RunEvent): "bad" | "warn" | "good" | "accent" | "plain" {
-  if (e.type === "error" || (e.type === "run_finished" && e.status === "error")) return "bad";
-  if (e.type === "verdict") return e.verdict === "BLOCK" ? "bad" : e.verdict === "WARN" ? "warn" : "good";
-  if (e.type === "lock_conflict" || e.type === "llm_fallback") return "warn";
-  if (e.type === "playbook_reused" || e.type === "fork_created") return "accent";
-  if (e.type === "hypothesis_resolved") return e.status === "CONFIRMED" ? "bad" : "good";
-  return "plain";
-}
-
 export function ms(value?: number | null): string {
   if (value === undefined || value === null) return "–";
+  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)} s`;
   return value < 10 ? `${value.toFixed(1)} ms` : `${Math.round(value)} ms`;
 }
 
-export function shortGraph(name?: string): string {
-  return name ?? "";
+export function n(value?: number | null): string {
+  if (value === undefined || value === null) return "–";
+  return value.toLocaleString("en-US");
+}
+
+export function plural(count: number, one: string, many?: string): string {
+  return `${n(count)} ${count === 1 ? one : (many ?? `${one}s`)}`;
+}
+
+export function ago(ts?: number | string | null): string {
+  if (!ts) return "";
+  const t = typeof ts === "number" ? ts : Date.parse(ts);
+  if (Number.isNaN(t)) return "";
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 86400 * 30) return `${Math.floor(s / 86400)} d ago`;
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+export function date(value?: string | null): string {
+  if (!value) return "";
+  const d = new Date(value.length === 10 ? `${value}T12:00:00Z` : value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+export function shortDate(value?: string | null): string {
+  if (!value) return "";
+  const d = new Date(value.length === 10 ? `${value}T12:00:00Z` : value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/** 'homeassistant.components.sensor.EntityCategory' -> ['homeassistant.components.sensor.', 'EntityCategory'] */
+export function splitName(id: string, name?: string): [string, string] {
+  if (name && id.endsWith(name)) return [id.slice(0, id.length - name.length), name];
+  const i = id.lastIndexOf(".");
+  return i < 0 ? ["", id] : [id.slice(0, i + 1), id.slice(i + 1)];
+}
+
+export function fileName(path: string): string {
+  return path.split("/").pop() ?? path;
+}
+
+export function agentClass(agent?: string | null): string {
+  if (!agent) return "agent-other";
+  if (agent.startsWith("sim")) return "agent-sim";
+  if (["scout", "scribe", "judge"].includes(agent)) return `agent-${agent}`;
+  return "agent-other";
 }

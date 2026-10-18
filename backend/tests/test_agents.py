@@ -10,10 +10,11 @@ from shadowgraph.core import chat, memory
 from shadowgraph.mcp_server import server
 
 
-async def test_mcp_exposes_17_tools(rt):
+async def test_mcp_exposes_all_tools(rt):
     async with Client(server) as c:
         names = {t.name for t in (await c.list_tools()).tools}
-    assert len(names) == 17 and {"simulate_change", "memory_claim", "sim_fork", "action_post_verdict"} <= names
+    assert len(names) == 30 and {"simulate_change", "memory_claim", "sim_fork", "action_post_verdict"} <= names
+    assert {"ha_can_remove", "ha_who_uses", "ha_check_edits", "ha_check_pr", "ha_open_change", "ha_post_report"} <= names
 
 
 async def test_simulate_change_tool(rt):

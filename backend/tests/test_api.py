@@ -22,7 +22,8 @@ async def test_health_tenants_graph(fresh):
         h = (await c.get("/api/health")).json()
         assert h["ok"] is True and "acme" in h["tenants"]
         tenants = (await c.get("/api/tenants")).json()
-        assert [p["number"] for p in tenants[0]["prs"]] == [1, 2, 3]
+        acme = next(t for t in tenants if t["id"] == "acme")
+        assert [p["number"] for p in acme["prs"]] == [1, 2, 3]
         g = (await c.get("/api/graph/acme")).json()
         assert len(g["services"]) == 25 and len(g["calls"]) == 42
         assert (await c.get("/api/graph/nope")).status_code == 404

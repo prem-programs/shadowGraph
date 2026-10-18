@@ -1,8 +1,9 @@
 # AGENT_HANDOFF.md: finish what the first build could not do
 
 **For the agent reading this:** you are continuing ShadowGraph on a normal laptop with internet and Docker.
-The code is complete and 33 tests passed against a real FalkorDB 4.18 server, but the first build ran in a
-locked-down cloud sandbox. Container registries (Docker Hub, GHCR, ECR, Quay), Hugging Face and Google were
+The code is complete and 46 tests passed against a real FalkorDB 4.18 server, but both builds ran in a
+locked-down cloud sandbox. The second build added the Home Assistant workspace (Tasks 14-19 cover what it
+could not check: the GitHub API was blocked there, git was not). Container registries (Docker Hub, GHCR, ECR, Quay), Hugging Face and Google were
 blocked there. There was no PowerShell, no API keys and no GitHub token. Every item below is something that could
 not run there. Work through the tasks **in order**, check each "Done when", fix what fails, and finish by filling
 in the report at the end.
@@ -14,16 +15,26 @@ in the report at the end.
 
 ## 0. Context in 60 seconds
 
-- **What it is:** a pull-request merge gate. It copies the company graph in FalkorDB (`GRAPH.COPY`), applies
-  the PR to the copy, measures what breaks (WCC partitions, exact betweenness, cascade chains), finds the decision
-  record in force and the right reviewer, then posts BLOCK, WARN or PASS to GitHub. Six agents coordinate through
-  hypothesis locks in a memory graph. The project is for the WeMakeDevs × FalkorDB "Graph Hacks" hackathon, all
-  three tracks.
-- **Read first:** `README.md` (overview), `implemented.md` (how everything works, verification so far, deviations).
-- **Layout:** `backend/shadowgraph/` (Python: `api.py`, `mcp_server.py`, `agents/`, `core/`, `graph/`),
-  `backend/tests/` (33 tests), `frontend/src/` (React + Vite + Cytoscape), `Dockerfile`, `docker-compose.yml`,
+- **What it is:** "know who you'll break before you merge." Main workspace: the real Home Assistant codebase
+  (home-assistant/core plus all 3,304 HACS custom integrations, snapshot in `data/ha_snapshot.json.gz`). For each
+  PR it diffs the API, finds every user with file:line and what fails, and shows when it ships; plus a retirement
+  board, a "broken by core" list, draft fixes, Ask, and MCP pre-flight tools for coding agents. **Read-only:
+  it never posts to Home Assistant or HACS repositories.** The original services sample (Acme, Globex) is still
+  there: it copies the company graph in FalkorDB (`GRAPH.COPY`), simulates removing an endpoint, and posts BLOCK,
+  WARN or PASS to your own demo repo. Agents coordinate through hypothesis locks in a memory graph. The project is
+  for the WeMakeDevs × FalkorDB "Graph Hacks" hackathon, all three tracks.
+- **Read first:** `README.md` (overview), `implemented.md` (Part 2 then Part 1: how everything works, how it was
+  verified, deviations), `docs/HOME_ASSISTANT.md`.
+- **Layout:** `backend/shadowgraph/` (Python: `api.py`, `mcp_server.py`, `ha/` (Home Assistant), `agents/`,
+  `core/`, `graph/`), `backend/tests/` (46 tests), `frontend/src/` (React + Vite + Cytoscape), `Dockerfile`, `docker-compose.yml`,
   `scripts/`, `demo-repo/acme-payments-demo/`, `docs/`.
-- **Expected demo results:** these are the numbers to confirm. Tenant `acme`:
+- **Expected Home Assistant results** (snapshot of Oct 18, 2026; replay from the Pull requests page):
+  - #186863: **Breaks**, 32 custom integrations on 2026.11, 10 used names removed; the agent run's cross-check
+    says "agree: 32 vs 32".
+  - #184756: **Breaks**, 11 custom integrations; announced by the blog post "Replacing `async_track_state_change`...".
+  - #186267: **Retires**, `CONN_CLASS_*` (6 names), 343 integrations still use them, removal 2027.5.
+  - Broken by core: 59 break in 2026.11, 95 already broken. Retirements: 17, of which 10 ready.
+- **Expected sample results:** these are the numbers to confirm. Tenant `acme`:
   - PR 1 (remove `/v1/token-verify`): **BLOCK**, services go from 1 component to 3, 2 lock conflicts, 3 shadow
     copies, 35 agent steps.
   - PR 2 (remove `/v1/session-refresh`): **BLOCK**, "Playbook reused" from PR 1, 23 steps.
@@ -37,8 +48,10 @@ in the report at the end.
    - Betweenness is computed exactly with `allShortestPaths` (Q5 in `queries.py`), because `algo.betweenness`
      samples and its before/after deltas are noise.
    - `DEFERRED_TO` is stored once per pair with a count, because `algo.pageRank` ignores parallel edges.
-2. **Keep the tests green:** `cd backend && python -m pytest -q` must say `33 passed` (or more, if you add tests)
+2. **Keep the tests green:** `cd backend && python -m pytest -q` must say `46 passed` (or more, if you add tests)
    after every change. Tests only touch FalkorDB graphs named `test_*`.
+2b. **Never post, comment, push or open PRs on home-assistant/* or any HACS repository**, and never add code that
+   does. Their AI policy treats automated comments as spam. Drafts stay drafts.
 3. **Never commit `.env`** or paste tokens into files that get committed. Ask the person for tokens and accounts.
 4. **Use Python 3.12 or 3.13**, not 3.14: `onnxruntime` (needed by `fastembed`) was only confirmed for 3.12/3.13.
 5. **Write down what you change** in `implemented.md` (sections 5 and 8) as you go.
@@ -52,6 +65,7 @@ in the report at the end.
 | Task 8–9 | FalkorDB Cloud instance URL `redis://default:PASSWORD@HOST:PORT` | <https://app.falkordb.cloud> (free) |
 | Task 9 | Render account connected to GitHub | <https://render.com> |
 | Task 7 | Optional: ngrok or Cloudflare account for a temporary public URL | ngrok.com / cloudflare |
+| Task 14 | A GitHub token for **reads only** (a fine-grained token with "Public repositories (read-only)" is enough) | github.com → Settings → Developer settings → Fine-grained tokens |
 
 ---
 
@@ -68,7 +82,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-**Done when:** `33 passed`. Then remove the test container: `docker rm -f falkordb-test`.
+**Done when:** `46 passed`. Then remove the test container: `docker rm -f falkordb-test`.
 **If it fails:** if FalkorDB isn't reachable, check `FALKORDB_URL` (default `redis://localhost:6379`) and that
 port 6379 is free. If a test fails on FalkorDB behaviour (`test_smoke.py`), the `:latest` image may have changed;
 run `docker run --rm falkordb/falkordb:latest redis-server --version` and note the module version. Pin the image in
@@ -293,14 +307,72 @@ volume name differs (compose prefixes the folder name), find it with `docker vol
 
 - [ ] Confirm the deadline extension in writing; the official page says Oct 18, 2026, 11:59 PM IST.
 - [ ] Public repo pushed by the person, with README links filled in: repo URL, live URL (Task 9), video URL.
-- [ ] Demo video, 2:30 or less, following `docs/DEMO_SCRIPT.md`, using the measured numbers from this laptop.
+- [ ] Demo video, about 2:45, following `docs/DEMO_SCRIPT.md` (Home Assistant first), using the numbers on screen.
 - [ ] Blog post: edit `docs/BLOG_DRAFT.md` into the person's own voice and publish (Dev.to or Hashnode). Replace
       `<link>` with the repo URL.
 - [ ] Submission form: name **all three tracks**, link the repo, video and live demo, and mention the AI-assistance
       disclosure in the README.
-- [ ] Optional polish: a GIF of the BLOCK run at the top of the README (`docs/img/`), and a CI badge.
+- [ ] Optional polish: a GIF of a replay at the top of the README (`docs/img/`), and a CI badge.
 
 ---
+
+---
+
+## Task 14. Home Assistant through the GitHub API (real PR titles)
+
+**Why not done before:** api.github.com was blocked in the build sandbox (git worked, so the git source was used).
+
+1. Put a read-only token in `.env`: `GITHUB_TOKEN=...` (ask the person). Leave `HA_CLONE` empty, `HA_SOURCE=auto`.
+2. Start the app, open Pull requests, press **Poll now**.
+
+**Done when:** the newest open PRs appear with their real titles (not commit subjects), and
+`curl -X POST localhost:8000/api/ha/feed/poll` returns `"source": "github"` without errors. Replay #186863 by
+number: it must still report 32 (the API path uses `pulls/N/files` and the compare endpoint for the merge base).
+**If it fails:** `ha/sources.py` `GitHubSource`. A 403 with `x-ratelimit-remaining: 0` means no token was sent.
+
+## Task 15. Home Assistant through a local clone (git source)
+
+```bash
+git clone --shallow-since="$(date -d '-14 days' +%F)" --branch dev --single-branch https://github.com/home-assistant/core ../ha-core
+# Windows PowerShell: --shallow-since=(Get-Date).AddDays(-14).ToString('yyyy-MM-dd')
+```
+
+Set `HA_CLONE=../ha-core` (absolute path is safer), restart, **Poll now**, and replay #186863.
+**Done when:** both work and `../ha-core-prs.git` exists (PR refs are fetched there, never into the clone).
+`git -C ../ha-core log origin/dev --oneline | wc -l` must not shrink after a poll.
+
+## Task 16. Refresh the snapshot (optional, takes about 30 minutes)
+
+```bash
+python scripts/fetch_ha_sources.py --dir ../ha-sources --build --out ../ha_snapshot_new.json.gz
+```
+
+Compare with the shipped one: `python -c "import gzip,json;print(json.load(gzip.open('../ha_snapshot_new.json.gz'))['meta'])"`.
+If counts are in the same range (1,500+ core, 3,000+ HACS integrations, parse failures in single digits), copy it
+to `data/ha_snapshot.json.gz`, restart, and update the numbers in README.md, docs/HOME_ASSISTANT.md and
+docs/DEMO_SCRIPT.md from the dashboard. **Done when:** the app loads it and the self-check holds: no core use of a
+missing name (see `tests/test_ha.py::test_snapshot_self_check` for the rule).
+
+## Task 17. Install counts (feature, about 1 hour)
+
+Home Assistant publishes opt-in analytics per custom integration at
+<https://analytics.home-assistant.io/custom_integrations.json> (domain → installations). Add an optional
+`--analytics` step to `ha/importer.py` that stores `installs` on each external integration, load it in
+`ha/load.py`, and show "~N installations" next to each affected integration and in the verdict headline
+("Breaks 32 custom integrations (about N installations)"). Keep it optional: the build must work without it.
+**Done when:** a test covers the loader path with a small fake file, and the report shows the numbers.
+
+## Task 18. Docker image with the snapshot
+
+The Dockerfile now installs git and copies `data/`. Build and run it (`docker compose up --build`).
+**Done when:** the image starts, `/api/ha/overview` says `"loaded": true` within a minute, and the three replays
+work with `GITHUB_TOKEN` set (Docker has no clone by default). Note the image size in `implemented.md`.
+
+## Task 19. Live feed on the deployment
+
+On Render (Task 9), set `HA_FEED=1`, `HA_FEED_INTERVAL=300`, `GITHUB_TOKEN` (read-only) and `ADMIN_TOKEN`.
+**Done when:** after an hour the Pull requests page shows a dozen or more checked open PRs and the server log has
+no feed errors. Watch the rate limit: each poll costs about 3 requests per new PR.
 
 ## Report back (fill this in, then add it to `implemented.md` section 8)
 

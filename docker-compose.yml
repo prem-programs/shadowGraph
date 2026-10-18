@@ -42,6 +42,17 @@ services:
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      # Home Assistant workspace (read-only). See docs/HOME_ASSISTANT.md
+      TENANTS: ${TENANTS:-ha,acme,globex}
+      HA_SOURCE: ${HA_SOURCE:-auto}
+      HA_FEED: ${HA_FEED:-0}
+      HA_FEED_INTERVAL: ${HA_FEED_INTERVAL:-180}
+      HA_FEED_BATCH: ${HA_FEED_BATCH:-12}
+      HA_CLONE: ${HA_CLONE_IN_CONTAINER:-}
+    # To use a local clone of home-assistant/core instead of the GitHub API, mount it and set
+    # HA_CLONE_IN_CONTAINER=/ha-core (and HA_SOURCE=git) in .env:
+    # volumes:
+    #   - /path/to/ha-core:/ha-core
     restart: unless-stopped
 
 volumes:

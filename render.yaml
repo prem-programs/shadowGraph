@@ -24,3 +24,10 @@ services:
         generateValue: true
       - key: DEFAULT_MODE
         value: rules
+      # Home Assistant workspace (read-only; GITHUB_TOKEN above is used for reads only)
+      - key: TENANTS
+        value: ha,acme,globex
+      - key: HA_FEED
+        value: "1"
+      - key: HA_FEED_INTERVAL
+        value: "300"

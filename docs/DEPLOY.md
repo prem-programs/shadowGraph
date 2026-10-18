@@ -24,10 +24,18 @@ One Docker image serves the API, `/mcp` and the dashboard. FalkorDB runs on Falk
 3. Fill in the environment variables:
    - `FALKORDB_URL`: the URL from step 1
    - `PUBLIC_URL`: `https://<service-name>.onrender.com`
-   - optional: `GEMINI_API_KEY`, `GITHUB_TOKEN`, `GITHUB_REPO`
+   - `GITHUB_TOKEN`: a **read-only** token (fine-grained, "Public repositories (read-only)") so the Home Assistant
+     feed gets real PR titles and 5,000 API requests an hour instead of 60. It is used for reads only.
+   - optional: `GEMINI_API_KEY`; `GITHUB_REPO` only for the Acme sample's PR comments (needs a write token for
+     that repo instead, see the README)
+   - the blueprint turns the Home Assistant live feed on (`HA_FEED=1`, every 5 minutes)
    - `GITHUB_WEBHOOK_SECRET` and `ADMIN_TOKEN` are generated; copy the webhook secret for step 3.
 4. Deploy. The first build takes several minutes (it downloads the embedding model). Check
-   `https://<service>.onrender.com/api/health`.
+   `https://<service>.onrender.com/api/health`, then `/api/ha/overview` (`"loaded": true` about a minute after
+   the first start, while the snapshot loads into FalkorDB).
+
+FalkorDB memory: the Home Assistant graph is about 266,000 edges and 15,000 nodes. If a small free FalkorDB instance runs out of
+memory, set `TENANTS=ha` (skip the samples) or use a larger instance.
 
 Render's free tier sleeps after 15 minutes idle; open the URL a minute before judging or recording.
 
