@@ -65,7 +65,16 @@ class GraphDB:
     def __init__(self, url: str, hub: EventHub) -> None:
         self.url = url
         self.hub = hub
-        self.client = FalkorDB.from_url(url)
+        last_exc: Exception | None = None
+        for attempt in range(1, 16):
+            try:
+                self.client = FalkorDB.from_url(url)
+                break
+            except Exception as exc:
+                last_exc = exc
+                time.sleep(1)
+        else:
+            raise RuntimeError(f"Could not connect to FalkorDB at {url}: {last_exc}")
         self._copy_lock = asyncio.Lock()
 
     async def ping(self) -> bool:

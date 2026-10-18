@@ -6,15 +6,13 @@
 services:
   falkordb:
     image: falkordb/falkordb:latest
+    network_mode: host
     environment:
       REDIS_ARGS: "--bind 0.0.0.0 --protected-mode no"
-    ports:
-      - "6379:6379"
-      - "3000:3000"
     volumes:
       - falkordb-data:/var/lib/falkordb/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-h", "127.0.0.1", "ping"]
       interval: 3s
       timeout: 3s
       retries: 30
@@ -23,13 +21,12 @@ services:
   app:
     build: .
     image: shadowgraph:latest
+    network_mode: host
     depends_on:
       falkordb:
         condition: service_healthy
-    ports:
-      - "8000:8000"
     environment:
-      FALKORDB_URL: redis://falkordb:6379
+      FALKORDB_URL: redis://127.0.0.1:6379
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
       DEFAULT_MODE: ${DEFAULT_MODE:-rules}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
