@@ -140,13 +140,17 @@ def use_rows(snap: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def symbol_rows(snap: dict[str, Any]) -> list[dict[str, Any]]:
-    users: dict[str, dict[str, set]] = defaultdict(lambda: {"core": set(), "external": set()})
-    its = snap["integrations"]
-    for idx, key, *_ in snap["uses"]:
-        users[key][its[idx]["kind"]].add(idx)
+    users = None
+    if "uses" in snap and snap["uses"]:
+        users = defaultdict(lambda: {"core": set(), "external": set()})
+        its = snap["integrations"]
+        for idx, key, *_ in snap["uses"]:
+            users[key][its[idx]["kind"]].add(idx)
     rows = []
     for key, s in snap["symbols"].items():
         d = s.get("deprecated") or {}
+        u_core = len(users[key]["core"]) if users is not None else s.get("users_core", 0)
+        u_ext = len(users[key]["external"]) if users is not None else s.get("users_external", 0)
         rows.append({
             "id": key, "module": s["module"], "name": s["name"], "kind": s.get("kind", ""),
             "state": s.get("state", "exists" if s.get("exists") else "missing"), "line": s.get("line", 0),
@@ -158,13 +162,13 @@ def symbol_rows(snap: dict[str, Any]) -> list[dict[str, Any]]:
             "deprecated_in": s.get("deprecated_in") or "", "added_in": s.get("added_in") or "",
             "never_existed": bool(s.get("never_existed")),
             "params_json": json.dumps(s.get("params")) if s.get("params") else "",
-            "users_core": len(users[key]["core"]), "users_external": len(users[key]["external"]),
+            "users_core": u_core, "users_external": u_ext,
             "via": s.get("via") or [],
         })
     return rows
 
 
-async def _batch(rt: "Runtime", graph: str, cypher: str, rows: list[dict], size: int = 1000) -> None:
+async def _batch(rt: "Runtime", graph: str, cypher: str, rows: list[dict], size: int = 500) -> None:
     for i in range(0, len(rows), size):
         await rt.db.query(graph, cypher, {"rows": rows[i:i + size]}, emit=False)
 
@@ -216,8 +220,32 @@ async def load_snapshot(rt: "Runtime", snap: dict[str, Any], tenant: str = TENAN
     await _batch(rt, graph, """UNWIND $rows AS r MATCH (m:Module {id: r.module}), (s:Symbol {id: r.id})
                  CREATE (m)-[:EXPORTS]->(s)""", [{"module": s["module"], "id": s["id"]} for s in syms])
 
-    await _batch(rt, graph, """UNWIND $rows AS r MATCH (i:Integration {id: r.it}), (s:Symbol {id: r.sym})
-                 CREATE (i)-[:USES {context: r.context, n: r.n, sites: r.sites}]->(s)""", use_rows(snap), 2000)
+    # USES edges: stream from ha_uses.jsonl.gz if available, or fall back to in-memory snap["uses"]
+    uses_streamed = False
+    uses_candidates = [
+        Path(__file__).resolve().parents[3] / "data" / "ha_uses.jsonl.gz",
+        Path.cwd() / "data" / "ha_uses.jsonl.gz",
+        Path("/app/data/ha_uses.jsonl.gz"),
+    ]
+    uses_file = next((str(p) for p in uses_candidates if p.is_file()), None)
+    if uses_file and not snap.get("uses"):
+        import gzip as _gz
+        cypher_uses = """UNWIND $rows AS r MATCH (i:Integration {id: r.it}), (s:Symbol {id: r.sym})
+                         CREATE (i)-[:USES {context: r.context, n: r.n, sites: r.sites}]->(s)"""
+        batch = []
+        with _gz.open(uses_file, "rt", encoding="utf-8") as f:
+            for line in f:
+                batch.append(json.loads(line))
+                if len(batch) >= 400:
+                    await rt.db.query(graph, cypher_uses, {"rows": batch}, emit=False)
+                    batch.clear()
+        if batch:
+            await rt.db.query(graph, cypher_uses, {"rows": batch}, emit=False)
+            batch.clear()
+        uses_streamed = True
+    elif snap.get("uses"):
+        await _batch(rt, graph, """UNWIND $rows AS r MATCH (i:Integration {id: r.it}), (s:Symbol {id: r.sym})
+                     CREATE (i)-[:USES {context: r.context, n: r.n, sites: r.sites}]->(s)""", use_rows(snap), 400)
 
     # manifest dependencies resolve by domain, preferring the core integration of that name
     core_by_domain = {it["domain"]: it["id"] for it in snap["integrations"] if it["kind"] == "core"}
