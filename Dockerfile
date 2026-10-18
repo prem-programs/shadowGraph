@@ -33,7 +33,7 @@ COPY backend/ backend/
 COPY data/ data/
 ENV HA_SNAPSHOT=/app/data/ha_snapshot.json.gz
 COPY --from=ui /ui/dist /app/static
-RUN useradd --create-home --uid 10001 shadow && chown -R shadow /app
+RUN useradd --create-home --uid 10001 -g shadow shadow && chown -R shadow /app
 USER shadow
 WORKDIR /app/backend
 EXPOSE 8000
