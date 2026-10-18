@@ -54,21 +54,27 @@ mcp_http = mcp_server.streamable_http_app(streamable_http_path="/mcp", stateless
 async def lifespan(app: FastAPI):
     rt = get_runtime()
     rt.cleanup_shadows = True
-    try:
-        await rt.ensure_ready()
-        log.info("FalkorDB ready at %s; tenants %s; embedder %s", rt.settings.falkordb_url,
-                 ", ".join(rt.settings.tenants), rt.embedder.name)
-    except Exception as exc:  # keep serving; /api/health reports it and requests retry
-        log.error("FalkorDB not ready yet: %s", exc)
     feed_task = None
-    if rt.settings.ha_feed and "ha" in rt.settings.tenants:
-        import asyncio
 
-        feed_task = asyncio.create_task(ha_feed.loop(rt))
+    async def _bg_init():
+        nonlocal feed_task
+        try:
+            await rt.ensure_ready()
+            log.info("FalkorDB ready at %s; tenants %s; embedder %s", rt.settings.falkordb_url,
+                     ", ".join(rt.settings.tenants), rt.embedder.name)
+            if rt.settings.ha_feed and "ha" in rt.settings.tenants:
+                import asyncio
+                feed_task = asyncio.create_task(ha_feed.loop(rt))
+        except Exception as exc:
+            log.error("FalkorDB background init error: %s", exc)
+
+    init_task = asyncio.create_task(_bg_init())
     async with mcp_server.session_manager.run():
         yield
     if feed_task:
         feed_task.cancel()
+    if init_task:
+        init_task.cancel()
     await rt.db.close()
 
 

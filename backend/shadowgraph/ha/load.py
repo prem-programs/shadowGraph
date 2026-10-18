@@ -236,7 +236,7 @@ async def load_snapshot(rt: "Runtime", snap: dict[str, Any], tenant: str = TENAN
         with _gz.open(uses_file, "rt", encoding="utf-8") as f:
             for line in f:
                 batch.append(json.loads(line))
-                if len(batch) >= 400:
+                if len(batch) >= 800:
                     await rt.db.query(graph, cypher_uses, {"rows": batch}, emit=False)
                     batch.clear()
         if batch:

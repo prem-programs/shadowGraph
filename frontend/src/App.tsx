@@ -51,8 +51,10 @@ export default function App() {
     if (!route.length) go("ha", "changes");
   }, [route.length]);
   useEffect(() => {
-    const titles: Record<string, string> = { changes: "Pull requests", retirements: "Retirements", broken: "Broken by core",
-      names: "Who uses", name: "Who uses", ask: "Ask", agents: "Connect an agent", about: "About the data" };
+    const titles: Record<string, string> = {
+      changes: "Pull requests", retirements: "Retirements", broken: "Broken by core",
+      names: "Who uses", name: "Who uses", ask: "Ask", agents: "Connect an agent", about: "About the data"
+    };
     document.title = workspace === "ha" ? `${titles[page] ?? "ShadowGraph"} · ShadowGraph` : "Services sample · ShadowGraph";
   }, [workspace, page]);
 
