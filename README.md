@@ -251,9 +251,7 @@ backend/tests/            46 tests against a real FalkorDB (tests/ha_fixture.py 
 frontend/src/             React dashboard (ha/ pages, acme/ sample, components/ui.tsx, styles/)
 data/ha_snapshot.json.gz  the Home Assistant snapshot (about 6 MB)
 scripts/                  fetch_ha_sources.py (rebuild the snapshot), start/package scripts
-docs/                     HOME_ASSISTANT.md, MCP_CLIENTS.md, DEPLOY.md, DEMO_SCRIPT.md, QUERIES.md, TRANSFER.md
-implemented.md            what was built, how, and how it was verified
-AGENT_HANDOFF.md          what to finish on another machine
+docs/                     HOME_ASSISTANT.md, MCP_CLIENTS.md, DEPLOY.md, DEMO_SCRIPT.md, QUERIES.md, BLOG_DRAFT.md
 ```
 
 ## AI assistance (disclosure)
