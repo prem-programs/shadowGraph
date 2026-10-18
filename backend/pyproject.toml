@@ -9,6 +9,7 @@ description = "PR merge gate that simulates a change on a copy of the company gr
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+authors = [{ name = "Northern Blades" }]
 dependencies = [
   "falkordb>=1.8,<2",
   "fastapi>=0.115",
