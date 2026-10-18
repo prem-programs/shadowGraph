@@ -24,6 +24,8 @@ services:
         generateValue: true
       - key: DEFAULT_MODE
         value: rules
+      - key: EMBED_BACKEND
+        value: hash
       # Home Assistant workspace (read-only; GITHUB_TOKEN above is used for reads only)
       - key: TENANTS
         value: ha,acme,globex
