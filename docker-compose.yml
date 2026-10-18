@@ -1,0 +1,48 @@
+# One command:  docker compose up --build      then open http://localhost:8000
+# FalkorDB's own browser UI is at http://localhost:3000 (connect to host "falkordb", port 6379 from inside,
+# or localhost:6379 from your machine).
+# Optional settings come from a .env file next to this one (copy .env.example). Nothing in it is required.
+
+services:
+  falkordb:
+    image: falkordb/falkordb:latest
+    ports:
+      - "6379:6379"
+      - "3000:3000"
+    volumes:
+      - falkordb-data:/var/lib/falkordb/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  app:
+    build: .
+    image: shadowgraph:latest
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      FALKORDB_URL: redis://falkordb:6379
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
+      DEFAULT_MODE: ${DEFAULT_MODE:-rules}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPO: ${GITHUB_REPO:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      PR_TOKEN_VERIFY: ${PR_TOKEN_VERIFY:-1}
+      PR_SESSION_REFRESH: ${PR_SESSION_REFRESH:-2}
+      PR_JWKS: ${PR_JWKS:-3}
+      EMBED_BACKEND: ${EMBED_BACKEND:-auto}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    restart: unless-stopped
+
+volumes:
+  falkordb-data:

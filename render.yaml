@@ -1,0 +1,26 @@
+# Render blueprint: one Docker web service. FalkorDB itself runs on FalkorDB Cloud (free tier).
+# Render dashboard -> New -> Blueprint -> pick this repo, then fill in the secret values.
+services:
+  - type: web
+    name: shadowgraph
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: FALKORDB_URL
+        sync: false   # redis://default:PASSWORD@HOST:PORT from FalkorDB Cloud
+      - key: PUBLIC_URL
+        sync: false   # https://<your-service>.onrender.com
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPO
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        generateValue: true
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: DEFAULT_MODE
+        value: rules

@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shadowgraph"
+version = "1.0.0"
+description = "PR merge gate that simulates a change on a copy of the company graph in FalkorDB before it lands"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+  "falkordb>=1.8,<2",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "sse-starlette>=2.1",
+  "mcp>=2.2,<3",
+  "httpx>=0.27",
+  "pydantic>=2.7",
+  "google-genai>=1.20",
+]
+
+[project.optional-dependencies]
+embed = ["fastembed>=0.4"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[project.scripts]
+shadowgraph = "shadowgraph.__main__:main"
+shadowgraph-mcp = "shadowgraph.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["shadowgraph*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+pythonpath = ["."]

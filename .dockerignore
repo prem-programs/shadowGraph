@@ -1,0 +1,14 @@
+.git
+.github
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+.env
+.env.*
+!.env.example
+docs
+demo-repo
+*.zip
+*.tar
