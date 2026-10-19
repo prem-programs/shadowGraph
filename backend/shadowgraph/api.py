@@ -435,11 +435,8 @@ async def ha_feed_status() -> dict[str, Any]:
 
 
 @app.post("/api/ha/feed/poll")
-async def ha_feed_poll(x_admin_token: str | None = Header(default=None)) -> dict[str, Any]:
+async def ha_feed_poll() -> dict[str, Any]:
     rt = await _ready()
-    token = os.environ.get("ADMIN_TOKEN", "")
-    if token and x_admin_token != token:
-        raise HTTPException(401, "X-Admin-Token required")
     try:
         return await ha_feed.poll_once(rt)
     except Exception as exc:
