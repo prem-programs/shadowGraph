@@ -9,32 +9,35 @@ Built for **Graph Hacks: Context for AI Agents** (WeMakeDevs × FalkorDB), enter
 
 ---
 
-# Part 1: The Core Architecture & Services Sample (Acme Payments)
+# Part 1: Experience 1 — The Live "War-Room" & GitHub PR Guardrail (Acme Payments)
 
-## 1.1 Overview
-The original build implemented a microservice blast-radius analysis engine (`acme` tenant):
-* Services calling each other's HTTP endpoints.
-* Simulators fork the service graph with `GRAPH.COPY`.
-* Algorithms:
+## 1.1 Overview & Architecture
+Rather than maintaining a disconnected checklist of features, ShadowGraph grounds its multi-agent capabilities in an interactive live war room on a microservice architecture (`acme` tenant, `demo-repo/acme-payments-demo/`):
+* **Opening a Risky Pull Request**: An engineer opens a PR on GitHub—e.g. removing `/v1/token-verify`, `/v1/session-refresh`, or `/v1/jwks` from `auth_service/main.py` using templates in `pr-bodies/` (`1-remove-token-verify.md`, `2-remove-session-refresh.md`, `3-remove-jwks.md`).
+* **Watching the Agents Think Live** (`backend/shadowgraph/events.py` + `api.py`): Server-Sent Events (SSE) stream every step in real time across a 3-panel war room:
+  - **Left Feed (Agent Coordination)**: Scout, Scribe, Simulator, and Judge wake up, lock hypotheses atomically via FalkorDB write locks, and recall past incident playbooks.
+  - **Center Canvas (Live vs. Shadow Graph Diff)**: Displays the healthy live graph (`org_live`) alongside an instant clone (`org_sim_{id}`). Severed services light up in red and bottleneck nodes expand visually.
+  - **Right Panel (Proof & Lineage)**: Displays active vs. outdated ADRs (`[:SUPERSEDED_BY]`), the true Subject Matter Expert via PageRank, and query execution latency.
+* **Automated GitHub PR Comment** (`backend/shadowgraph/core/comment.py` + `core/verdict.py`): Posts a rich Markdown verdict directly onto the GitHub PR (`core/github.py`), blocking bad merges with mathematical proof.
+* **Interactive Co-Pilot Chat & Tenant Switching** (`backend/shadowgraph/core/chat.py`): Switch between isolated company tenants (`acme` via `seed_acme.py` and `globex` via `seed_globex.py`) and converse with the Company Brain with persistent session memory.
+* **Graph Algorithms**:
   - `algo.WCC` (Weakly Connected Components): detects service mesh network partitions (isolating Tier 0 services).
   - Exact betweenness centrality with `allShortestPaths` (Brandes algorithm) to find critical architectural chokepoints.
   - PageRank (`algo.pageRank`) on the code-review network to rank the single most qualified reviewer.
   - Vector similarity search (`score` distance) on architectural decisions (ADRs) with `SUPERSEDED_BY` chains.
-* Coordination & Memory:
-  - Atomic claims on hypotheses via FalkorDB write locks (zero race conditions).
-  - Memory graph storing episodes, facts (e.g. `is X safe to remove = false`), and playbooks.
-  - 17 MCP tools exposed over streamable HTTP at `/mcp` and `stdio`.
 * Full test suite: **33 passing automated tests** in `tests/test_smoke.py`, `tests/test_queries.py`, `tests/test_simulation.py`, `tests/test_lock_race.py`, `tests/test_agents.py`, `tests/test_api.py`, `tests/test_llm.py`.
 
 ---
 
-# Part 2: The Home Assistant Workspace (Real-World Scale)
+# Part 2: Experience 2 — Real-World Codebase Mode: The Home Assistant Explorer (ha/)
 
-## 2.1 The Problem at Open-Source Scale
-Rather than relying only on toy data, ShadowGraph was expanded to run against a massive, real-world open-source ecosystem:
+## 2.1 The Problem at Open-Source Scale (Why Both Exist)
+Synthetic or microservice demo data alone is not enough to prove real-world viability. Experience 2 exists *specifically* to prove that ShadowGraph scales to an enormous, unmanaged, real-world open-source ecosystem:
 * **`home-assistant/core`**: ~130 merged pull requests a day, 1,510 core integrations.
 * **All 3,304 custom integrations in HACS** (Home Assistant Community Store) spanning 3,303 external GitHub repositories.
 * **The Blindness of Core CI**: Core CI tests only pass/fail code inside `home-assistant/core`. An internal refactor in core can break dozens of downstream custom integrations without failing a single core test.
+* **Visualizing Broken Integrations**: Select any core component or service and simulate breaking or deprecating it. The UI maps the blast radius across dependent integrations (`ha/impact.py`).
+* **Asking the Codebase Brain**: Through natural language (`ha/ask.py`), query component ownership, API surface (`ha/surface.py`), service call usage (`ha/usage.py`), or migration paths (`ha/migrate.py`), grounded in real parsed Python ASTs (`data/ha_snapshot.json.gz`).
 
 ## 2.2 What was built for Home Assistant
 

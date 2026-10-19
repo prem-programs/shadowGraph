@@ -59,6 +59,49 @@ to remove today, 1 past its planned release. Details and method: [docs/HOME_ASSI
    `SUPERSEDED_BY`), announcements (developer-blog posts linked to the names they mention), releases and past
    checks. Ask answers "who still uses `async_track_state_change`?" with sources.
 
+## Two Core Experiences: Why Both Exist
+
+Instead of presenting an abstract checklist of disconnected features, ShadowGraph is structured around **two deliberate, complementary experiences**. We do this because without grounded operational workflows, feature lists are just claims:
+
+* **Experience 1** demonstrates the live multi-agent simulation lifecycle in real time: an interactive war-room where SSE streams agent hypotheses, shadow graph cloning (`GRAPH.COPY`), network partition alerts (`algo.WCC`), PageRank reviewer assignments, automated GitHub PR comments, and tenant switching with isolated company brains (`acme` vs `globex`).
+* **Experience 2** exists *specifically because* synthetic or microservice demo data alone is not enough to prove real-world viability. We built the Home Assistant suite to prove that our AST blast-radius engine, deprecation countdowns, and knowledge graph seamlessly scale to a massive, real-world open-source ecosystem (1,510 core integrations, 3,304 community integrations across 3,303 external GitHub repos, 13 monthly release tags) with zero untrusted code execution.
+
+---
+
+### Experience 1: The Live "War-Room" & GitHub PR Guardrail
+
+Built on the Acme Payments microservice sample ([demo-repo/acme-payments-demo/](demo-repo/acme-payments-demo/)):
+
+![Acme Payments Live War-Room Simulation](docs/img/services-sample.png)
+
+1. **Opening a Risky Pull Request** ([`demo-repo/acme-payments-demo/`](demo-repo/acme-payments-demo/)):
+   An engineer opens a PR on GitHub—for example, removing `/v1/token-verify`, `/v1/session-refresh`, or `/v1/jwks` from `auth_service/main.py` using the templates in [`pr-bodies/`](demo-repo/acme-payments-demo/pr-bodies/) (`1-remove-token-verify.md`, `2-remove-session-refresh.md`, `3-remove-jwks.md`).
+2. **Watching the Agents Think Live** ([`events.py`](backend/shadowgraph/events.py) + [`api.py`](backend/shadowgraph/api.py)):
+   On the dashboard, instead of a boring loading spinner, Server-Sent Events (SSE) stream every step in real time across a 3-panel war room:
+   * **Left Feed (Agent Coordination)**: You watch Scout, Scribe, Simulator, and Judge wake up, lock hypotheses so they don't step on each other's toes, and recall past incident playbooks.
+   * **Center Canvas (Live vs. Shadow Graph Diff)**: You see the healthy live graph (`org_live`) alongside an instant clone (`org_sim_{id}`). When the PR change is applied to the clone, severed services light up in red and bottleneck nodes expand visually.
+   * **Right Panel (Proof & Lineage)**: Displays which ADRs are active vs. outdated (`[:SUPERSEDED_BY]`), which human engineer is the true Subject Matter Expert via PageRank, and the exact millisecond latency of each FalkorDB query.
+3. **Automated GitHub PR Comment** ([`core/comment.py`](backend/shadowgraph/core/comment.py) + [`core/verdict.py`](backend/shadowgraph/core/verdict.py)):
+   ShadowGraph doesn't just show a dashboard—it formats a rich Markdown review verdict (`core/verdict.py`) and posts it directly onto the GitHub Pull Request ([`core/github.py`](backend/shadowgraph/core/github.py)), blocking bad merges with mathematical proof (`algo.WCC` partition detection).
+4. **Interactive Co-Pilot Chat & Tenant Switching** ([`core/chat.py`](backend/shadowgraph/core/chat.py)):
+   Users can switch between isolated company tenants (`acme` via [`seed_acme.py`](backend/shadowgraph/graph/seed_acme.py) and `globex` via [`seed_globex.py`](backend/shadowgraph/graph/seed_globex.py)) and chat with the Company Brain while preserving persistent session memory.
+
+---
+
+### Experience 2: Real-World Codebase Mode — The Home Assistant Explorer (`ha/`)
+
+To prove ShadowGraph works on massive, real-world production codebases (not just synthetic demo data), the repo includes a dedicated Home Assistant (`ha/`) intelligence suite ([docs/HOME_ASSISTANT.md](docs/HOME_ASSISTANT.md)):
+
+<p>
+<img src="docs/img/ha-broken.png" width="49%" alt="Visualizing Broken Integrations">
+<img src="docs/img/ha-ask.png" width="49%" alt="Asking the Codebase Brain">
+</p>
+
+1. **Visualizing Broken Integrations** (`docs/img/ha-broken.png`):
+   A user selects a core Home Assistant component or service and simulates deprecating or breaking it. The UI immediately maps out the blast radius across dependent integrations ([`ha/impact.py`](backend/shadowgraph/ha/impact.py)), showing exactly which smart-home components break downstream across 3,304 community repositories.
+2. **Asking the Codebase Brain** (`docs/img/ha-ask.png`):
+   Through the natural-language interface ([`ha/ask.py`](backend/shadowgraph/ha/ask.py)), a developer asks questions about component ownership, API surface ([`ha/surface.py`](backend/shadowgraph/ha/surface.py)), service call usage ([`ha/usage.py`](backend/shadowgraph/ha/usage.py)), or migration paths ([`ha/migrate.py`](backend/shadowgraph/ha/migrate.py)), getting answers grounded in real parsed Python ASTs (`data/ha_snapshot.json.gz` and `data/ha_uses.jsonl.gz`).
+
 ## Quick start
 
 **Docker.** Needs Docker Desktop.
@@ -213,12 +256,7 @@ Paste into `CLAUDE.md` / `AGENTS.md`: *"Before you remove, rename or change the 
 
 ## The services sample (Acme Payments)
 
-The same engine on a different kind of API: microservices calling each other's HTTP endpoints. Pick **Acme
-Payments (sample)** in the workspace menu. PR #1 removes `/v1/token-verify`: simulators fork the service graph,
-`algo.WCC` shows the mesh splitting into three groups (one holds a tier 0 service), the decision cited by the PR
-(ADR-08) was superseded by ADR-19 which forbids the removal, and PageRank ranks the reviewer. PR #2 reuses the
-playbook and finishes in fewer steps. With a demo repo and token it posts the verdict as a PR comment and status
-([demo-repo/](demo-repo/acme-payments-demo)); Home Assistant is never posted to.
+The same engine on a different kind of API: microservices calling each other's HTTP endpoints (detailed in [Experience 1: The Live "War-Room" & GitHub PR Guardrail](#experience-1-the-live-war-room--github-pr-guardrail)). Pick **Acme Payments (sample)** in the workspace menu. PR #1 removes `/v1/token-verify`: simulators fork the service graph, `algo.WCC` shows the mesh splitting into three groups (one holds a tier 0 service), the decision cited by the PR (ADR-08) was superseded by ADR-19 which forbids the removal, and PageRank ranks the reviewer. PR #2 reuses the playbook and finishes in fewer steps. With a demo repo and token it posts the verdict as a PR comment and status ([demo-repo/acme-payments-demo/](demo-repo/acme-payments-demo/)); Home Assistant is never posted to.
 
 ## Configuration
 
