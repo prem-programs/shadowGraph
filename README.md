@@ -254,6 +254,123 @@ scripts/                  fetch_ha_sources.py (rebuild the snapshot), start/pack
 docs/                     HOME_ASSISTANT.md, MCP_CLIENTS.md, DEPLOY.md, DEMO_SCRIPT.md, QUERIES.md, BLOG_DRAFT.md
 ```
 
+## Frequently Asked Questions (Q&A)
+
+<details>
+<summary><strong>1. Is this authentic real-world data or mock data / bluffing?</strong></summary>
+
+**It is 100% authentic, real-world open-source data.** There is zero fabricated mock data. Every integration, file path, and line number comes directly from public GitHub repositories:
+* **`home-assistant/core`**: The official Home Assistant platform (over 70,000 GitHub stars).
+* **3,304 custom integrations**: Every community integration in the official [HACS default directory](https://github.com/hacs/default).
+* Real examples you can verify right now on GitHub:
+  - `AlexxIT/SonoffLAN`: Popular Sonoff smart switch integration.
+  - `BottlecapDave/HomeAssistant-OctopusEnergy`: UK energy provider integration.
+  - `frenck/spook`: Created by Franck Nijhof, a lead Home Assistant core developer.
+  - `Geek-MD/HA_Daily_Counter`: [counter.py:7](https://github.com/Geek-MD/HA_Daily_Counter/blob/master/custom_components/ha_daily_counter/counter.py#L7) literally contains `from homeassistant.helpers.event import async_track_state_change`!
+</details>
+
+<details>
+<summary><strong>2. What does "Snapshot 19b2bae · Oct 18" mean? Why do we need a snapshot?</strong></summary>
+
+* **`19b2bae`**: The exact Git commit SHA of `home-assistant/core` on GitHub when the ecosystem was scanned.
+* **`Oct 18, 2026`**: The date when static AST analysis was completed.
+* **Why a snapshot?** Cloning 3,304 GitHub repositories and parsing 562,444 Python import statements takes ~25 minutes and 3 GB of disk. ShadowGraph pre-analyzed the ecosystem into `data/ha_snapshot.json.gz` so FalkorDB hydrates the entire knowledge graph in under 15 seconds.
+</details>
+
+<details>
+<summary><strong>3. Is it really analyzing code or just simulating? Why the name "ShadowGraph"?</strong></summary>
+
+It does **both**:
+1. **Real Live Fetching**: When you input a PR number, ShadowGraph fetches the actual Git diff from GitHub's REST API.
+2. **Real AST Diffing**: It inspects which Python symbols were deleted, moved, or deprecated.
+3. **Shadow Graph Simulation**: To test downstream blast radius without corrupting the live database, ShadowGraph calls FalkorDB's `GRAPH.COPY` to create an isolated, in-memory **"shadow copy"** of the graph. Four autonomous AI agents (Scout, Simulator, Judge, Scribe) execute the changes in the shadow graph, measure cascading failures, and discard the copy.
+</details>
+
+<details>
+<summary><strong>4. What is "Next release: 2026.11 · Nov 4" and why does it matter?</strong></summary>
+
+Home Assistant uses **CalVer** (`YYYY.MM`) and has a strict release schedule: **every major monthly release ships on the first Wednesday of the month**. 
+In November 2026, the first Wednesday is **November 4**. ShadowGraph connects code changes to real human deadlines:
+> *"32 custom integrations will crash when Home Assistant auto-updates on user hubs on **November 4** (in 16 days) unless patched first."*
+</details>
+
+<details>
+<summary><strong>5. Why are there so many PRs when I click "Poll now" even after just 2 minutes?</strong></summary>
+
+`home-assistant/core` has over **400+ open pull requests** waiting on GitHub at any time. When you click "Poll now", ShadowGraph pulls the next batch of 12 unanalyzed PRs from GitHub's live queue. It doesn't wait for new PRs to be filed; it processes the active backlog.
+</details>
+
+<details>
+<summary><strong>6. Why do some PRs say "merged 13 mins ago"?</strong></summary>
+
+Home Assistant is one of the most active software projects in the world, averaging **~130 merged PRs every single day** (~1 every 10 minutes). That timestamp is real-time data from GitHub: a developer's PR was reviewed and merged 13 minutes ago, and ShadowGraph pulled that live event.
+</details>
+
+<details>
+<summary><strong>7. Why did "Draft fix" say "No automatic patch for this one; the notes above say what to change"?</strong></summary>
+
+There are two kinds of breaking changes:
+* **Relocations (Automatic Patch)**: When symbols are moved (e.g., PR #186863 moved `StateType` from `sensor` to `helpers.typing`), ShadowGraph outputs an exact unified `.diff` file you can copy.
+* **Signature Changes (Manual Code Change)**: For `async_track_state_change`, the replacement `async_track_state_change_event` takes a different event callback signature (`Event` object instead of 3 parameters). ShadowGraph refuses to generate a blind broken patch and honestly directs the developer on what to update.
+</details>
+
+<details>
+<summary><strong>8. Why doesn't ShadowGraph automatically open PRs or post comments on Home Assistant repositories?</strong></summary>
+
+Home Assistant has a strict, zero-tolerance [AI Policy](https://github.com/home-assistant/architecture/blob/master/AI_POLICY.md) that bans automated third-party bots from opening PRs or posting comments on community repositories. ShadowGraph respects the open-source community by acting as a read-only advisory assistant.
+</details>
+
+<details>
+<summary><strong>9. Why did Home Assistant's own CI pass (green checkmark) on PRs that break custom integrations?</strong></summary>
+
+Core's CI only runs tests on code inside `home-assistant/core`. It is completely blind to external repositories. An internal cleanup that stops re-exporting names breaks hundreds of downstream integrations while remaining 100% green in Core CI.
+</details>
+
+<details>
+<summary><strong>10. How does ShadowGraph classify import breakages?</strong></summary>
+
+Every import site is categorized by AST context:
+* **Load time**: Module-level or class body → integration fails to set up or platform fails to load.
+* **Runtime**: Inside a function → fails when that specific code path runs.
+* **Conditional**: Inside a module-level `if` (e.g., version check) → may fail.
+* **Shimmed**: Inside `try/except ImportError` → safe, fallback keeps working.
+* **Type hint**: Annotations only → no runtime failure.
+</details>
+
+<details>
+<summary><strong>11. Do I need any environment variables or API keys to run the app?</strong></summary>
+
+**No.** ShadowGraph runs completely zero-config out of the box with `docker compose up`. Variables like `GEMINI_API_KEY` and `GITHUB_TOKEN` are optional enhancements.
+</details>
+
+<details>
+<summary><strong>12. What is the benefit of adding a `GITHUB_TOKEN` if it runs without one?</strong></summary>
+
+1. **80x Rate Limit**: Increases GitHub API limits from 60 to 5,000 requests/hour.
+2. **Automated PR Bot**: In your own repository, ShadowGraph posts verdict comments and commit status checks (✅/❌) to GitHub PRs.
+</details>
+
+<details>
+<summary><strong>13. What is `ADMIN_TOKEN`?</strong></summary>
+
+`ADMIN_TOKEN` is a secret token that guards destructive endpoints like `/api/admin/reset/{tenant}` from unauthorized public requests on live cloud deployments.
+</details>
+
+<details>
+<summary><strong>14. Why did FalkorDB Cloud throw `OutOfMemoryError: command not allowed when used memory > 'maxmemory'`?</strong></summary>
+
+FalkorDB Cloud Free Tier has a 25 MB memory cap. The Home Assistant knowledge graph with 4,814 integrations and 100,000+ edges requires ~150 MB RAM. Running FalkorDB in Docker or Railway provides up to 8 GB RAM with zero memory limits.
+</details>
+
+<details>
+<summary><strong>15. What does LLM Mode unlock compared to Rules Mode?</strong></summary>
+
+Rules Mode uses deterministic AST graph traversal. Adding a free Gemini API key (`DEFAULT_MODE=llm`) unlocks:
+* Multi-agent reasoning (Scout, Simulator, Judge, Scribe).
+* Semantic impact summaries.
+* Natural-language conversational queries in the "Ask" tab.
+</details>
+
 ## AI assistance (disclosure)
 
 Built with Claude (Anthropic) as a coding assistant. The project owner set the product direction (a startup
