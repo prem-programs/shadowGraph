@@ -284,9 +284,14 @@ class GitHubSource:
         self.rate: dict[str, Any] = {}
 
     async def _get(self, url: str, **params: Any) -> Any:
-        r = await self.http.get(url if url.startswith("http") else f"https://api.github.com{url}", params=params)
+        full_url = url if url.startswith("http") else f"https://api.github.com{url}"
+        r = await self.http.get(full_url, params=params)
         self.rate = {"remaining": r.headers.get("x-ratelimit-remaining"), "limit": r.headers.get("x-ratelimit-limit"),
                      "reset": r.headers.get("x-ratelimit-reset")}
+        if r.status_code == 401 and "Authorization" in self.http.headers:
+            log.warning("GITHUB_TOKEN returned 401 Unauthorized (bad credentials). Retrying anonymously.")
+            self.http.headers.pop("Authorization", None)
+            r = await self.http.get(full_url, params=params)
         if r.status_code == 403 and r.headers.get("x-ratelimit-remaining") == "0":
             raise RuntimeError("GitHub API rate limit reached; set GITHUB_TOKEN (read-only scope is enough)")
         r.raise_for_status()
