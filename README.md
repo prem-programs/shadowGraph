@@ -338,37 +338,43 @@ Every import site is categorized by AST context:
 </details>
 
 <details>
-<summary><strong>11. Do I need any environment variables or API keys to run the app?</strong></summary>
+<summary><strong>11. What do the four verdicts (Breaks, Retires, Review, Clear) mean?</strong></summary>
 
-**No.** ShadowGraph runs completely zero-config out of the box with `docker compose up`. Variables like `GEMINI_API_KEY` and `GITHUB_TOKEN` are optional enhancements.
+When checking pull requests, each change receives one of four verdicts:
+* **Breaks (Red)**: A public symbol was deleted or relocated without backward compatibility, causing active downstream consumers to crash on import or runtime.
+* **Retires (Amber)**: Starts deprecation of an active name with an announced future release removal target, beginning the migration countdown.
+* **Review (Yellow)**: The change touches high-centrality core modules or has a large blast radius that warrants platform team review.
+* **Clear (Green)**: Internal change that affects zero downstream public APIs. The majority (~62%) of daily PRs are clear.
 </details>
 
 <details>
-<summary><strong>12. What is the benefit of adding a `GITHUB_TOKEN` if it runs without one?</strong></summary>
+<summary><strong>12. Can I use ShadowGraph on my own company's internal codebase or private microservices?</strong></summary>
 
-1. **80x Rate Limit**: Increases GitHub API limits from 60 to 5,000 requests/hour.
-2. **Automated PR Bot**: In your own repository, ShadowGraph posts verdict comments and commit status checks (✅/❌) to GitHub PRs.
+**Yes.** While Home Assistant serves as the massive open-source proof on Python, ShadowGraph is a general-purpose blast-radius engine. The repository includes the **Acme Payments** workspace (`TENANTS=acme`), demonstrating microservices calling internal HTTP endpoints. It uses graph algorithms like PageRank to identify key code owners and Weakly Connected Components (`algo.WCC`) to detect service mesh partitions. Any enterprise monorepo or multi-repo architecture can plug in.
 </details>
 
 <details>
-<summary><strong>13. What is `ADMIN_TOKEN`?</strong></summary>
+<summary><strong>13. What is the "Connect an agent" page and how do AI coding agents (Claude Code / Cursor) use ShadowGraph?</strong></summary>
 
-`ADMIN_TOKEN` is a secret token that guards destructive endpoints like `/api/admin/reset/{tenant}` from unauthorized public requests on live cloud deployments.
+ShadowGraph exposes a full **Model Context Protocol (MCP)** server at `/mcp` (streamable HTTP or stdio). When an AI coding assistant (like Claude Code or Cursor) is refactoring code, it can call tools like `ha_can_remove("SomeFunction")` or `ha_check_edits(...)` before saving changes. This acts as a pre-flight guardrail, stopping AI agents from introducing breaking changes into shared libraries.
 </details>
 
 <details>
-<summary><strong>14. Why did FalkorDB Cloud throw `OutOfMemoryError: command not allowed when used memory > 'maxmemory'`?</strong></summary>
+<summary><strong>14. What is the "Retirements" board and how should platform maintainers use it?</strong></summary>
 
-FalkorDB Cloud Free Tier has a 25 MB memory cap. The Home Assistant knowledge graph with 4,814 integrations and 100,000+ edges requires ~150 MB RAM. Running FalkorDB in Docker or Railway provides up to 8 GB RAM with zero memory limits.
+The Retirements board automates the API deprecation lifecycle. Instead of guessing whether anyone still uses an old API, it displays every deprecated function, days until scheduled deletion, and an automated rule: *Remove when downstream user count = 0*. When the count reaches zero, platform teams can delete legacy code with 100% confidence.
 </details>
 
 <details>
-<summary><strong>15. What does LLM Mode unlock compared to Rules Mode?</strong></summary>
+<summary><strong>15. What is "Broken by core" and why does it list 95 integrations as "already broken"?</strong></summary>
 
-Rules Mode uses deterministic AST graph traversal. Adding a free Gemini API key (`DEFAULT_MODE=llm`) unlocks:
-* Multi-agent reasoning (Scout, Simulator, Judge, Scribe).
-* Semantic impact summaries.
-* Natural-language conversational queries in the "Ask" tab.
+Because custom integrations are maintained independently by thousands of third-party developers on GitHub. When Core removed an old API in an earlier release (e.g., months ago), some integration authors never updated their repositories. "Broken by core" catalogs these unmaintained repositories down to the exact file and line (`binary_sensor.py:7`) so community members can send fixes.
+</details>
+
+<details>
+<summary><strong>16. Does ShadowGraph execute untrusted third-party code when analyzing 3,304 repositories?</strong></summary>
+
+**No.** ShadowGraph relies strictly on **static Python AST parsing** (`ast.parse`). No third-party code is ever imported, executed, or run in a Python runtime. It parses syntax trees to inspect import statements and class structures without any security risk.
 </details>
 
 ## AI assistance (disclosure)
